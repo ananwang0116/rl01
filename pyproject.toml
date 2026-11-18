@@ -1,0 +1,24 @@
+[project]
+name = "rl01"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "an", email = "2695924382@qq.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "matplotlib>=3.11.2",
+    "mujoco>=4.0.0",
+    "numpy>=2.4.6",
+    "torch>=2.11.0",
+]
+
+[project.scripts]
+rl01 = "rl01:main"
+
+[[tool.uv.index]]
+url = "https://download.pytorch.org/whl/cu128"
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14.0"]
+build-backend = "uv_build"
