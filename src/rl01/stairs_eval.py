@@ -22,11 +22,17 @@ def main():
     a = p.parse_args()
     torch.set_num_threads(2)
     ac, ck = load_policy(a.checkpoint)
-    cfg = EnvCfg(stairs=True, episode_s=a.seconds, push_vel=0.0, noise=False, speed_clear=False, w_foot_clear=-150)
+    ec = ck.get('env_cfg', {})
+    obs_taps = tuple(ec.get('obs_taps', (0,)))
+    stair_top = float(ec.get('stair_top', 1.0))
+    stair_top_steps = int(ec.get('stair_top_steps', 25))
+    stair_lat_lim = float(ec.get('stair_lateral_limit', 0.42))
+    cfg = EnvCfg(stairs=True, episode_s=a.seconds, push_vel=0.0, noise=False, speed_clear=False, w_foot_clear=-150,
+                 obs_taps=obs_taps, stair_top=stair_top, stair_top_steps=stair_top_steps, stair_lateral_limit=stair_lat_lim)
     env = Go2Env(a.num_envs, cfg, seed=a.seed, nthread=4)
     env.stage = a.stage
     env.reset_idx(np.arange(a.num_envs))
-    env._compute_obs()
+    env._compute_obs(shift=False)
     # One episode per environment; reset samples are ignored in summary.
     active = np.ones(a.num_envs, bool)
     max_x = env.state[:, 1].copy()
@@ -37,7 +43,9 @@ def main():
     first_rear = np.full(a.num_envs, -1, dtype=int)
     diag_count = moving_count = 0
     swing_z = [[], [], [], []]
-    model = build_train_model(visual=True, stair_stage=a.stage)
+    top_swing_z = [[], [], [], []]
+    top_tilt2 = []
+    model = build_train_model(visual=True, stair_stage=a.stage, stair_top=stair_top)
     # Match the viewer: disable the light shadow that produces black render artifacts.
     model.light_castshadow[:] = False
     data = mujoco.MjData(model)
@@ -65,9 +73,14 @@ def main():
             diag_count += int((moving & diag).sum()); moving_count += int(moving.sum())
             hs = np.array([STAIR_STAGES[i][0] for i in env.env_stage])[:, None]
             ground = np.minimum(env.terrain_height(feet[:, :, 0], feet[:, :, 1]), np.maximum(0, np.floor(feet[:, :, 2] / hs) * hs))
+            edge = STAIR_X0 + (count - 1) * 0.25
+            on_top = moving & ~done & (feet[:, :, 0] > edge + 0.06).all(axis=1) & (feet[:, :, 2] > count * height - 0.04).all(axis=1)
             for leg in range(4):
                 z = feet[:, leg, 2] - ground[:, leg]
                 swing_z[leg].extend(z[moving & ~touch[:, leg]].tolist())
+                top_swing_z[leg].extend(z[on_top & ~touch[:, leg]].tolist())
+            if on_top.any():
+                top_tilt2.extend(np.sum(env.g_b[on_top, :2] ** 2, axis=1).tolist())
             front_hit = active & (first_front < 0) & on_first[:, :2].any(axis=1)
             rear_hit = active & (first_rear < 0) & on_first[:, 2:].any(axis=1)
             first_front[front_hit] = step; first_rear[rear_hit] = step
@@ -99,10 +112,13 @@ def main():
     print(f'stage={a.stage} h={STAIR_STAGES[a.stage][0]:.2f} n={STAIR_STAGES[a.stage][1]} seed={a.seed} envs={a.num_envs} seconds={a.seconds}', flush=True)
     print(f'first episodes: success={first_success} falls={first_fall} timeout={first_timeout}', flush=True)
     print(f'first-episode max x mean={max_x.mean():.3f} median={np.median(max_x):.3f} first_riser={STAIR_X0:.2f}; active_at_end={active.sum()}', flush=True)
-    print(f'first episodes: all four feet reach levels >=1..N: {[int((max_level >= k).sum()) for k in range(1, STAIR_STAGES[a.stage][1] + 1)]}; base |y|>0.45: {(max_abs_y > 0.45).sum()}', flush=True)
+    print(f'first episodes: all four feet reach levels >=1..N: {[int((max_level >= k).sum()) for k in range(1, STAIR_STAGES[a.stage][1] + 1)]}; base |y|>0.45: {(max_abs_y > 0.45).sum()} | max_abs_y mean={max_abs_y.mean():.3f} max={max_abs_y.max():.3f}', flush=True)
     print(f'first step contact: front={(first_front >= 0).sum()}, rear={(first_rear >= 0).sum()}, front-before-rear={((first_front >= 0) & (first_rear >= first_front)).sum()}', flush=True)
     lift = [round(float(np.percentile(z, 95)) * 100, 1) if z else None for z in swing_z]
+    top_lift = [round(float(np.percentile(z, 95)) * 100, 1) if z else None for z in top_swing_z]
+    top_tilt = round(float(np.degrees(np.sqrt(np.mean(top_tilt2)))), 2) if top_tilt2 else None
     print(f'moving samples={moving_count}, strict diagonal two-foot support fraction={diag_count / moving_count if moving_count else 0:.3f}; airborne relative foot-centre height 95th percentile cm FL FR RL RR={lift}', flush=True)
+    print(f'top platform (n={len(top_tilt2)}): airborne 95th cm FL FR RL RR={top_lift}; tilt_rms_deg={top_tilt}', flush=True)
     print(f'filmstrip={out}', flush=True)
 
 if __name__ == '__main__': main()

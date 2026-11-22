@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>rl01 · Unitree Go2 WebLab</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- 顶部控制栏：3行按功能模块分组 -->
+    <header class="topbar">
+      <!-- 第一行：模型策略 · 仿真连接 · 状态指示 -->
+      <div class="top-row">
+        <div class="ctrl-group">
+          <span class="brand-tag">考试台</span>
+          <span class="chip chip-muted">unitree_go2 (12 关节)</span>
+          <select id="ckptSelect" class="ctrl-select" title="选择训练检查点 (.pt)"></select>
+        </div>
+
+        <div class="ctrl-group" title="仿真启停与播放倍速">
+          <span class="group-label">仿真</span>
+          <button id="btnConnect" class="btn btn-sm btn-green">▶ 连接</button>
+          <button id="btnDisconnect" class="btn btn-sm">⏏ 断开</button>
+          <label class="inline-ctrl" title="仿真播放倍速：0.5x 慢放看步态 / 1x 实时 / 2x 快进">
+            倍速
+            <select id="speedMult" class="ctrl-select-sm">
+              <option value="0.5">0.5x</option>
+              <option value="1" selected>1.0x</option>
+              <option value="2">2.0x</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="status-pills">
+          <span id="pillConn" class="pill pill-green">仿真已连接</span>
+          <span id="pillMode" class="pill">模式 站立/单机</span>
+          <span id="pillFalls" class="pill">摔倒 0</span>
+        </div>
+      </div>
+
+      <!-- 第二行：地形 · 视角模块 · 模式 -->
+      <div class="top-row top-row-sub">
+        <div class="ctrl-group">
+          <span class="group-label">地形</span>
+          <select id="terrainKind" class="ctrl-select-sm">
+            <option value="flat">平地</option>
+            <option value="stairs">楼梯跑道</option>
+          </select>
+          <span id="stairControls" class="inline-ctrl" style="display:none;">
+            高 <input id="stepHSlider" type="range" min="3" max="20" step="1" value="10" />
+            <span id="stepHVal" class="mono">10cm</span>
+            级 <input id="nStepsInput" type="number" min="1" max="30" value="10" class="num-xs" />
+            宽 <input id="treadSlider" type="range" min="18" max="40" step="1" value="25" />
+            <span id="treadVal" class="mono">25cm</span>
+            <button id="applyTerrainBtn" class="btn btn-xs">应用</button>
+          </span>
+        </div>
+
+        <div class="ctrl-group" title="3D 视角与渲染叠加控制">
+          <span class="group-label">视角</span>
+          <button id="btnFollow" class="btn btn-xs btn-active">视角跟随</button>
+          <button id="btnResetCam" class="btn btn-xs" title="快捷键 R">重置视角</button>
+          <button id="btnCollider" class="btn btn-xs">碰撞体</button>
+          <label class="chk"><input type="checkbox" id="chkLabels" checked /> 标签</label>
+          <label class="chk"><input type="checkbox" id="chkGhost" /> 蓝影</label>
+          <label class="chk"><input type="checkbox" id="chkTrail" checked /> 轨迹</label>
+        </div>
+
+        <div class="ctrl-group" title="切换机器人底层控制模式">
+          <span class="group-label">模式</span>
+          <button id="btnStandby" class="btn btn-xs btn-active">站立/单机</button>
+          <button id="btnRL" class="btn btn-xs">RL 运控</button>
+        </div>
+      </div>
+
+      <!-- 第三行：扰动与负载 -->
+      <div class="top-row top-row-sub">
+        <div class="ctrl-group">
+          <span class="group-label">扰动/负载</span>
+          <label class="inline-ctrl" title="机身额外负重与安装偏移(m): x 前+/y 左+/z 上+">
+            负载 <input id="payloadMass" type="number" min="0" max="25" step="0.5" value="0" class="num-xs" /> kg @
+            x <input id="payloadX" type="number" min="-0.4" max="0.4" step="0.02" value="0" class="num-xs" />
+            y <input id="payloadY" type="number" min="-0.3" max="0.3" step="0.02" value="0" class="num-xs" />
+            z <input id="payloadZ" type="number" min="-0.2" max="0.4" step="0.02" value="0.1" class="num-xs" />
+          </label>
+          <div class="mini-sep"></div>
+          <div class="inline-ctrl" title="瞬时速度冲击：给机身瞬间叠加一次 Δv 速度扰动">
+            瞬时推 <input id="pushVel" type="number" min="0.1" max="4.0" step="0.1" value="1.0" class="num-xs" /> m/s
+            <button class="btn btn-xs" data-push="front">前</button>
+            <button class="btn btn-xs" data-push="back">后</button>
+            <button class="btn btn-xs" data-push="left">左</button>
+            <button class="btn btn-xs" data-push="right">右</button>
+          </div>
+          <div class="mini-sep"></div>
+          <div class="inline-ctrl" title="持续外力推：以指定牛顿力(N)持续推机身若干秒(s)">
+            持续推 <input id="sustainForce" type="number" min="10" max="1000" step="10" value="200" class="num-sm" /> N
+            <input id="sustainDur" type="number" min="0.05" max="3.0" step="0.05" value="0.2" class="num-xs" /> s
+            <button class="btn btn-xs" data-spush="front">前</button>
+            <button class="btn btn-xs" data-spush="back">后</button>
+            <button class="btn btn-xs" data-spush="left">左</button>
+            <button class="btn btn-xs" data-spush="right">右</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- 中间主体区域 + 右侧竖向标签 -->
+    <div class="main-area">
+      <div class="content-pane">
+        <!-- Tab 1: 考试台 -->
+        <section id="tab-arena" class="tab-panel active">
+          <div class="viewport-wrap">
+            <canvas id="glCanvas"></canvas>
+            <div id="labelsLayer" class="labels-layer"></div>
+
+            <div class="vp-hint">左键旋转 · 右键/Shift拖拽平移 · 滚轮缩放 · R 重置视角 · WASD/QE 遥控</div>
+
+            <div class="posture-bar">
+              <button class="btn btn-xs" data-posture="lie">趴下</button>
+              <button class="btn btn-xs" data-posture="crouch">蹲下</button>
+              <button class="btn btn-xs" data-posture="home">参考站姿</button>
+              <button class="btn btn-xs" data-posture="stand">站立</button>
+              <button class="btn btn-xs" data-posture="zero">零位</button>
+              <button id="btnRelax" class="btn btn-xs">松电机</button>
+              <label class="inline-ctrl">
+                用时 <input id="postureDur" type="range" min="0.3" max="4.0" step="0.1" value="2.0" />
+                <span id="postureDurVal" class="mono">2.0s</span>
+              </label>
+            </div>
+
+            <div id="watermark" class="vp-watermark">weblab rl01 · 服务 0.0h</div>
+            <div id="hudOverlay" class="vp-hud mono">速度 0.00  目标 0.00  基座 0.00, 0.00, 0.34</div>
+          </div>
+
+          <!-- 底部监控与控制区：IMU · 选中关节 · 力矩总览 · 常用(限速/复位) · 控制区 · 急停 -->
+          <footer class="bottom-dock">
+            <!-- 1. IMU 姿态 · 实际速度 -->
+            <div class="dock-card dock-imu">
+              <div class="card-title">IMU 姿态 · 实际速度</div>
+              <div class="imu-dials">
+                <div class="dial-box">
+                  <canvas id="horizonCanvas" width="66" height="66"></canvas>
+                  <div id="rpText" class="dial-label mono">roll 0.0° · pitch 0.0°</div>
+                </div>
+                <div class="dial-box">
+                  <canvas id="compassCanvas" width="66" height="66"></canvas>
+                  <div id="yawText" class="dial-label mono">yaw 0.0°</div>
+                </div>
+              </div>
+              <div class="vel-bars">
+                <div class="vel-row"><span>vx</span><div class="bar-track"><div id="barVx" class="bar-fill"></div></div><span id="valVx" class="mono">0.00 m/s</span></div>
+                <div class="vel-row"><span>vy</span><div class="bar-track"><div id="barVy" class="bar-fill"></div></div><span id="valVy" class="mono">0.00 m/s</span></div>
+                <div class="vel-row"><span>wz</span><div class="bar-track"><div id="barWz" class="bar-fill"></div></div><span id="valWz" class="mono">0.00 rad/s</span></div>
+              </div>
+            </div>
+
+            <!-- 2. 选中关节 -->
+            <div class="dock-card dock-joint">
+              <div class="card-title">选中关节 <span id="selJointName" class="accent">— (点标签/力矩条)</span></div>
+              <div class="joint-kv">
+                <div><span>实际</span><span id="jActual" class="mono">—</span></div>
+                <div><span>目标</span><span id="jTarget" class="mono">—</span></div>
+                <div><span>误差</span><span id="jError" class="mono">—</span></div>
+                <div><span>力矩</span><span id="jTorque" class="mono">—</span></div>
+              </div>
+              <div class="jog-row">
+                <span>JOG</span>
+                <input id="jogSlider" type="range" min="-2.7" max="3.5" step="0.01" value="0" disabled />
+                <span id="jogVal" class="mono">—</span>
+              </div>
+            </div>
+
+            <!-- 3. 力矩总览 (精简紧凑) -->
+            <div class="dock-card dock-torque">
+              <div class="card-title">力矩总览 (点选关节)</div>
+              <div id="torqueGrid" class="torque-grid"></div>
+            </div>
+
+            <!-- 4. 限速与复位小块 -->
+            <div class="dock-card dock-quick">
+              <div class="card-title">常用调节</div>
+              <div class="quick-limit" title="限制摇杆与键盘发送的最大前进速度指令 (m/s)">
+                <div class="quick-limit-head">
+                  <span>限速</span>
+                  <span id="speedLimitVal" class="mono">1.2 m/s</span>
+                </div>
+                <input id="speedLimit" type="range" min="0.3" max="2.2" step="0.1" value="1.2" />
+              </div>
+              <button id="btnReset" class="btn btn-accent-soft quick-reset-btn" title="将机器人重置回初始站立位置">↺ 复位</button>
+            </div>
+
+            <!-- 5. 控制区 (紧接在后面) -->
+            <div class="dock-card dock-ctrl">
+              <div class="card-title">控制区</div>
+              <div class="ctrl-body">
+                <div class="joy-wrap">
+                  <div id="joyPad" class="joy-pad">
+                    <div id="joyKnob" class="joy-knob"></div>
+                  </div>
+                  <div class="dial-label">移动 ↑vx / ←vy</div>
+                </div>
+                <div class="yaw-wrap">
+                  <div id="yawTrack" class="yaw-track">
+                    <div id="yawKnob" class="yaw-knob"></div>
+                  </div>
+                  <div class="dial-label">转向 ←左转 / 右转→</div>
+                  <div id="cmdReadout" class="dial-label mono">
+                    <span id="cmdLin">vx 0.00 · vy 0.00</span><br />
+                    <span id="cmdWz">wz 0.00</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 6. 急停 (紧接控制区后面) -->
+            <button id="btnEstop" class="estop-btn">急<br />停</button>
+          </footer>
+        </section>
+
+        <!-- Tab 2: 详细 -->
+        <section id="tab-detail" class="tab-panel panel-pad">
+          <div class="panel-header">12 关节实时状态详表</div>
+          <table class="detail-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>关节名称</th>
+                <th>实际角 (rad)</th>
+                <th>目标角 (rad)</th>
+                <th>跟踪误差 (rad)</th>
+                <th>角速度 (rad/s)</th>
+                <th>力矩 (N·m)</th>
+                <th>限位范围</th>
+              </tr>
+            </thead>
+            <tbody id="detailBody"></tbody>
+          </table>
+        </section>
+
+        <!-- Tab 3: 训练曲线 -->
+        <section id="tab-curves" class="tab-panel panel-pad">
+          <div class="panel-header">
+            <span>训练曲线</span>
+            <select id="logSelect" class="ctrl-select"></select>
+          </div>
+          <div class="charts-grid">
+            <div class="chart-card">
+              <div class="chart-title">回合回报 (ep_return)</div>
+              <canvas id="chartReturn" width="560" height="240"></canvas>
+            </div>
+            <div class="chart-card">
+              <div class="chart-title">线速度跟踪 & 存活率</div>
+              <canvas id="chartTrack" width="560" height="240"></canvas>
+            </div>
+            <div class="chart-card">
+              <div class="chart-title">实际 vx vs 指令 vx (m/s)</div>
+              <canvas id="chartVel" width="560" height="240"></canvas>
+            </div>
+            <div class="chart-card">
+              <div class="chart-title">摔倒次数 (falls)</div>
+              <canvas id="chartFalls" width="560" height="240"></canvas>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 4: 示波器 -->
+        <section id="tab-scope" class="tab-panel panel-pad">
+          <div class="panel-header">
+            <span>实时示波器 (最近 6 秒)</span>
+            <button id="btnScopePause" class="btn btn-sm">暂停采样</button>
+          </div>
+          <div class="charts-grid">
+            <div class="chart-card">
+              <div class="chart-title">线速度 vx / 目标 cmd_vx (m/s)</div>
+              <canvas id="scopeVel" width="560" height="240"></canvas>
+            </div>
+            <div class="chart-card">
+              <div class="chart-title">机身姿态 Roll / Pitch (deg)</div>
+              <canvas id="scopeAtt" width="560" height="240"></canvas>
+            </div>
+            <div class="chart-card">
+              <div class="chart-title">选中关节 实际角 q vs 目标角 q_tgt (rad)</div>
+              <canvas id="scopeJointQ" width="560" height="240"></canvas>
+            </div>
+            <div class="chart-card">
+              <div class="chart-title">选中关节 力矩 tau (N·m)</div>
+              <canvas id="scopeJointTau" width="560" height="240"></canvas>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- 右侧竖向标签栏 -->
+      <aside class="side-tabs">
+        <button class="side-tab active" data-tab="arena">考试台</button>
+        <button class="side-tab" data-tab="detail">详细</button>
+        <button class="side-tab" data-tab="curves">训练曲线</button>
+        <button class="side-tab" data-tab="scope">示波器</button>
+      </aside>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

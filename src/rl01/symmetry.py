@@ -22,7 +22,11 @@ def mirror_joints(x):
 
 
 def mirror_obs(obs):
-    """actor 观测的镜像（45 维）。"""
+    """actor 观测的镜像（支持单帧 45 维或 K 帧拼接 K*45 维）。"""
+    if obs.shape[-1] != 45:
+        assert obs.shape[-1] % 45 == 0
+        k = obs.shape[-1] // 45
+        return mirror_obs(obs.reshape(*obs.shape[:-1], k, 45)).reshape(*obs.shape)
     sign3 = lambda a, b, c: torch.as_tensor([a, b, c], device=obs.device, dtype=obs.dtype)
     return torch.cat([
         obs[..., 0:3] * sign3(-1, 1, -1),

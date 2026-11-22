@@ -37,8 +37,9 @@ def load_policy(path):
             m.eval()
             pols.append(m)
         return BlendedPolicy(pols[0], pols[1], b["v_lo"], b["v_hi"]), ck
+    actor_dim = ck["model"]["actor.0.weight"].shape[1]
     critic_dim = ck["model"]["critic.0.weight"].shape[1]
-    ac = ActorCritic(N_OBS, critic_dim, N_ACT)
+    ac = ActorCritic(actor_dim, critic_dim, N_ACT)
     ac.load_state_dict(ck["model"])
     ac.eval()
     return ac, ck
@@ -46,16 +47,24 @@ def load_policy(path):
 
 def make_env(ck, n, push, seed=123):
     d = dict(ck["env_cfg"])
-    d["friction_range"], d["mass_range"] = tuple(d["friction_range"]), tuple(d["mass_range"])
+    for k in ("friction_range", "mass_range", "obs_taps", "kp_range", "kd_range", "damping_range"):
+        if k in d:
+            d[k] = tuple(d[k])
+    d["stairs"] = False
+    d["flat_frac"] = 0.0
+    d["episode_s"] = 20.0
     cfg = EnvCfg(**d)
     cfg.push_vel = push
+    if push <= 0:
+        cfg.push_ang = 0.0
+        cfg.push_z = 0.0
     return Go2Env(n, cfg, seed=seed, noise=False)
 
 
 def set_cmd(env, vx):
     env.cmd[:] = [vx, 0.0, 0.0]
     env.cmd_left[:] = 10**9
-    env._compute_obs()
+    env._compute_obs(shift=False)
 
 
 @torch.no_grad()

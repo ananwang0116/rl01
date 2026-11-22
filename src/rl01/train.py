@@ -27,7 +27,7 @@ from rl01.symmetry import mirror_action, mirror_obs
 
 RUNS = Path(__file__).resolve().parents[2] / "runs"
 FIELDS = ["iteration", "time_s", "fps", "reward_step", "ep_return", "ep_len", "track_lin", "track_ang", "vx", "cmd_vx",
-          "falls", "timeouts", "vmax", "surrogate", "value", "kl", "lr", "std", "foot_out_mm", "foot_abs_mm", "swing_z_cm", "sym", "tilt_deg", "rate_xy", "lo_swing_cm", "stage", "stair_success", "stair_done", "front_land", "rear_land"]
+          "falls", "timeouts", "vmax", "surrogate", "value", "kl", "lr", "std", "foot_out_mm", "foot_abs_mm", "swing_z_cm", "sym", "tilt_deg", "rate_xy", "lo_swing_cm", "stage", "stair_success", "stair_done", "front_land", "rear_land", "stair_y_cm"]
 
 
 def main():
@@ -37,6 +37,36 @@ def main():
     ap.add_argument("--stair-rear-bonus", type=float, default=0.0)
     ap.add_argument("--track-sigma", type=float, default=0.25)
     ap.add_argument("--stairs", action="store_true", help="楼梯课程训练")
+    ap.add_argument("--flat-frac", type=float, default=0.0, help="stairs 模式下混入平地环境的比例")
+    ap.add_argument("--stair-mix-prev", type=float, default=0.0, help="重置楼梯环境时采样已解锁低档的概率")
+    ap.add_argument("--stair-top", type=float, default=1.0, help="顶平台长度 m")
+    ap.add_argument("--stair-top-steps", type=int, default=25, help="顶平台达标持续步数 (50Hz)")
+    ap.add_argument("--riser-clear-margin", type=float, default=0.0, help="爬梯前方台阶抬脚余量 m")
+    ap.add_argument("--obs-taps", type=int, nargs="+", default=[0], help="actor 观测历史帧偏移（0 必须在首位）")
+    ap.add_argument("--stair-all-stages", action="store_true", help="楼梯环境同时涵盖 5/10/15 cm × 5/10/15/20 级")
+    ap.add_argument("--stair-speed-curriculum", action="store_true", help="楼梯分高度速度课程 (0.25 -> stair_vx_max)")
+    ap.add_argument("--stair-speed-ladder", action="store_true", help="平地按 0.3..2.0 阶梯+连续斜坡采样，楼梯上限不超过 stair_vx_max")
+    ap.add_argument("--stair-vx-max", type=float, default=1.0, help="爬楼梯指令速度上限 m/s")
+    ap.add_argument("--stair-init-vmax", type=float, default=0.5, help="楼梯速度课程起点 m/s")
+    ap.add_argument("--stair-lateral-limit", type=float, default=0.42, help="楼梯机身横向偏移 |y| 终止上限 m")
+    ap.add_argument("--w-stair-y", type=float, default=0.0, help="楼梯世界 y 偏离平方惩罚权重（负数）")
+    ap.add_argument("--w-stair-yaw", type=float, default=0.0, help="楼梯世界航向偏离平方惩罚权重（负数）")
+    ap.add_argument("--ang-sigma", type=float, default=0.25, help="track_ang 指数分母")
+    ap.add_argument("--cmd-slew-rate", type=float, default=0.0, help="指令 vx 连续斜坡变化速率 m/s^2 (0=阶跃)")
+    ap.add_argument("--cmd-resample-s", type=float, default=5.0, help="指令重采样间隔 s")
+    ap.add_argument("--friction-range", type=float, nargs=2, default=[0.4, 1.2])
+    ap.add_argument("--mass-range", type=float, nargs=2, default=[-1.0, 1.5])
+    ap.add_argument("--kp-range", type=float, nargs=2, default=[1.0, 1.0])
+    ap.add_argument("--kd-range", type=float, nargs=2, default=[1.0, 1.0])
+    ap.add_argument("--damping-range", type=float, nargs=2, default=[1.0, 1.0])
+    ap.add_argument("--com-range", type=float, default=0.0)
+    ap.add_argument("--push-ang", type=float, default=0.0, help="随机角速度冲击上限 rad/s")
+    ap.add_argument("--push-z", type=float, default=0.0, help="随机垂向速度冲击上限 m/s")
+    ap.add_argument("--push-interval", type=float, default=5.0, help="平均推力间隔 s")
+    ap.add_argument("--w-track-lin", type=float, default=None)
+    ap.add_argument("--w-track-ang", type=float, default=None)
+    ap.add_argument("--entropy-coef", type=float, default=0.01)
+    ap.add_argument("--cap-init-std", type=float, default=None, help="--init-from 时把动作标准差上限裁剪到该值")
     ap.add_argument("--log-every", type=int, default=None)
     ap.add_argument("--save-every", type=int, default=None)
     ap.add_argument("--iterations", type=int, default=5000, help="总迭代数（'步'）")
@@ -68,7 +98,25 @@ def main():
     torch.manual_seed(args.seed)
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    cfg = EnvCfg(w_diagonal=args.w_diagonal, stair_front_bonus=args.stair_front_bonus, stair_rear_bonus=args.stair_rear_bonus, track_sigma=args.track_sigma, stairs=args.stairs, episode_s=45.0 if args.stairs else 20.0, vx_max=args.vx_max, init_vmax=args.init_vmax, push_vel=args.push, noise=not args.no_noise)
+    obs_taps = tuple(args.obs_taps)
+    assert obs_taps[0] == 0, "obs_taps 首项必须为 0（当前帧）"
+    cfg = EnvCfg(
+        w_diagonal=args.w_diagonal, stair_front_bonus=args.stair_front_bonus, stair_rear_bonus=args.stair_rear_bonus,
+        track_sigma=args.track_sigma, ang_sigma=args.ang_sigma, stairs=args.stairs, flat_frac=args.flat_frac, stair_mix_prev=args.stair_mix_prev,
+        stair_all_stages=args.stair_all_stages, stair_speed_curriculum=args.stair_speed_curriculum,
+        stair_speed_ladder=args.stair_speed_ladder, stair_vx_max=args.stair_vx_max, stair_init_vmax=args.stair_init_vmax,
+        stair_lateral_limit=args.stair_lateral_limit, w_stair_y=args.w_stair_y, w_stair_yaw=args.w_stair_yaw,
+        cmd_slew_rate=args.cmd_slew_rate, cmd_resample_s=args.cmd_resample_s, stair_top=args.stair_top, stair_top_steps=args.stair_top_steps,
+        riser_clear_margin=args.riser_clear_margin, obs_taps=obs_taps, episode_s=45.0 if args.stairs else 20.0,
+        vx_max=args.vx_max, init_vmax=args.init_vmax, push_vel=args.push, push_ang=args.push_ang, push_z=args.push_z, push_interval_s=args.push_interval, noise=not args.no_noise,
+        friction_range=tuple(args.friction_range), mass_range=tuple(args.mass_range),
+        kp_range=tuple(args.kp_range), kd_range=tuple(args.kd_range),
+        damping_range=tuple(args.damping_range), com_range=args.com_range,
+    )
+    if args.w_track_lin is not None:
+        cfg.w_track_lin = args.w_track_lin
+    if args.w_track_ang is not None:
+        cfg.w_track_ang = args.w_track_ang
     if args.w_foot_width is not None:
         cfg.w_foot_width = args.w_foot_width
     if args.w_foot_clear is not None:
@@ -80,22 +128,30 @@ def main():
         if getattr(args, a_) is not None:
             setattr(cfg, f_, getattr(args, a_))
     env = Go2Env(args.num_envs, cfg, seed=args.seed)
+    actor_dim = N_OBS * len(cfg.obs_taps)
     critic_dim = N_OBS + N_CRITIC_EXTRA + (STAIR_SCAN if args.stairs else 0)
-    ac = ActorCritic(N_OBS, critic_dim, N_ACT).to(dev)
-    ppo = PPO(ac, lr=args.lr, mirror=(mirror_obs, mirror_action) if args.sym_coef > 0 else None, sym_coef=args.sym_coef)
+    ac = ActorCritic(actor_dim, critic_dim, N_ACT).to(dev)
+    ppo = PPO(ac, lr=args.lr, entropy_coef=args.entropy_coef, mirror=(mirror_obs, mirror_action) if args.sym_coef > 0 else None, sym_coef=args.sym_coef)
 
     start = 0
     if args.init_from:
         ck0 = torch.load(args.init_from, map_location=dev)
-        state = ck0["model"]
-        if args.stairs:
-            state = dict(state)
-            old = state["critic.0.weight"]
-            expanded = ac.state_dict()["critic.0.weight"].clone().zero_()
-            expanded[:, :old.shape[1]] = old
-            state["critic.0.weight"] = expanded
+        state = dict(ck0["model"])
+        for key in ("actor.0.weight", "critic.0.weight"):
+            old = state[key]
+            cur = ac.state_dict()[key]
+            if old.shape[1] != cur.shape[1]:
+                expanded = cur.clone().zero_()
+                n_copy = min(old.shape[1], cur.shape[1])
+                expanded[:, :n_copy] = old[:, :n_copy]
+                state[key] = expanded
         ac.load_state_dict(state)
-        env.vmax = min(ck0["vmax"], cfg.vx_max)
+        if args.cap_init_std is not None:
+            with torch.no_grad():
+                ac.std.clamp_(max=args.cap_init_std)
+        env.vmax = max(min(ck0["vmax"], cfg.vx_max), cfg.init_vmax)
+        env._resample_cmd(np.arange(env.N), snap=True)
+        env._compute_obs(shift=False)
         print(f"从 {args.init_from} 载入网络权重（微调，迭代从 0 开始）")
     if args.resume:
         ck = torch.load(args.resume, map_location=dev)
@@ -104,8 +160,10 @@ def main():
         ppo.lr, env.vmax, start = ck["lr"], ck["vmax"], ck["iteration"]
         if args.stairs:
             env.stage = ck["stair_stage"]
+            if "stair_vmax" in ck and ck["stair_vmax"] is not None:
+                env.stair_vmax = np.array(ck["stair_vmax"], dtype=np.float64)
             env.reset_idx(np.arange(env.N))
-            env._compute_obs()
+            env._compute_obs(shift=False)
         run_dir = Path(args.resume).parent
     else:
         run_dir = RUNS / (args.name or datetime.now().strftime("%Y%m%d_%H%M%S"))
@@ -131,14 +189,16 @@ def main():
         writer.writeheader()
 
     print(f"运行目录 {run_dir}")
-    print(f"设备 {dev}  环境数 {args.num_envs}  每次迭代 {args.steps} 步 = {args.num_envs * args.steps:,} 样本")
+    print(f"设备 {dev}  环境数 {args.num_envs}  每次迭代 {args.steps} 步 = {args.num_envs * args.steps:,} 样本  actor_dim={actor_dim}")
     print(f"总迭代 {total}：每 {log_every} 步输出一次（2.5%），每 {save_every} 步保存一次（10%）")
 
     T, N = args.steps, args.num_envs
     z = lambda *s: torch.zeros(T, N, *s, device=dev)
-    st = dict(obs=z(N_OBS), cobs=z(critic_dim), act=z(N_ACT), logp=z(), val=z(), rew=z(), done=z(),
+    st = dict(obs=z(actor_dim), cobs=z(critic_dim), act=z(N_ACT), logp=z(), val=z(), rew=z(), done=z(),
               mu=z(N_ACT), sigma=z(N_ACT))
     recent = deque(maxlen=40)  # 课程判断用：只看最近 40 个迭代（不能累计到升级为止，否则早期的差表现一直拖着平均值）
+    flat_recent = deque(maxlen=40)
+    stair_h_recent = [deque(maxlen=40) for _ in range(3)]
     pending = []  # 两次输出之间的逐迭代指标，输出时取平均
     t_start = time.time()
     env.pop_stats()
@@ -166,15 +226,38 @@ def main():
         s = env.pop_stats()
         n = max(s["steps"], 1)
         recent.append(s)
+        flat_recent.append(s)
+        for g in range(3):
+            stair_h_recent[g].append(s)
         win = dict(ep_len=[l for r in recent for l in r["ep_len"]], rel_err_sum=sum(r["rel_err_sum"] for r in recent),
                    n_mov=sum(r["n_mov"] for r in recent))
         if args.stairs:
-            completed = sum(r["stair_current_done"] for r in recent)
-            succeeded = sum(r["stair_current_success"] for r in recent)
-            if completed >= 128 and succeeded / completed >= 0.70 and env.stage < len(STAIR_STAGES) - 1:
-                env.stage += 1
-                print(f"楼梯课程升级: {STAIR_STAGES[env.stage]}，上一档 {succeeded}/{completed}", flush=True)
-                recent.clear()
+            if not cfg.stair_all_stages:
+                completed = sum(r["stair_current_done"] for r in recent)
+                succeeded = sum(r["stair_current_success"] for r in recent)
+                if completed >= 128 and succeeded / completed >= 0.70 and env.stage < len(STAIR_STAGES) - 1:
+                    env.stage += 1
+                    print(f"楼梯课程升级: {STAIR_STAGES[env.stage]}，上一档 {succeeded}/{completed}", flush=True)
+                    recent.clear()
+            if cfg.stair_speed_curriculum:
+                for g, h_cm in enumerate((5, 10, 15)):
+                    if env.stair_vmax[g] >= cfg.stair_vx_max:
+                        continue
+                    done_g = sum(r["stair_h_done"][g] for r in stair_h_recent[g])
+                    succ_g = sum(r["stair_h_success"][g] for r in stair_h_recent[g])
+                    nmov_g = sum(r["stair_h_n_mov"][g] for r in stair_h_recent[g])
+                    err_g = sum(r["stair_h_err_sum"][g] for r in stair_h_recent[g])
+                    if done_g >= 64 and nmov_g >= 4000 and succ_g / done_g >= 0.70 and err_g / nmov_g < 0.30:
+                        env.stair_vmax[g] = min(env.stair_vmax[g] + cfg.vmax_step, cfg.stair_vx_max)
+                        print(f"楼梯速度课程升级 ({h_cm} cm): vmax={env.stair_vmax[g]:.2f}/{cfg.stair_vx_max:.2f} (成功 {succ_g}/{done_g}, 相对误差 {err_g/nmov_g:.2f})", flush=True)
+                        stair_h_recent[g].clear()
+            if cfg.flat_frac > 0 and len(flat_recent) == flat_recent.maxlen:
+                fwin = dict(flat_ep_len=[l for r in flat_recent for l in r["flat_ep_len"]],
+                            flat_rel_err_sum=sum(r["flat_rel_err_sum"] for r in flat_recent),
+                            flat_n_mov=sum(r["flat_n_mov"] for r in flat_recent))
+                if env.update_curriculum(fwin, flat_only=True):
+                    print(f"平地速度课程升级: vmax={env.vmax:.2f}", flush=True)
+                    flat_recent.clear()
         elif len(recent) == recent.maxlen and env.update_curriculum(win):
             recent.clear()  # 升级后重新积累，用新的指令范围重新判断
         row = dict(
@@ -189,6 +272,7 @@ def main():
             tilt_deg=float(np.degrees(np.sqrt(s["tilt2"] / n))), rate_xy=float(np.sqrt(s["rate2"] / n)),
             lo_swing_cm=100 * s["lo_swing_z"] / s["lo_swing_n"] if s["lo_swing_n"] else float("nan"),
             swing_z_cm=100 * s["swing_z_sum"] / s["swing_n"] if s["swing_n"] else float("nan"),
+            stair_y_cm=100 * s["stair_y_abs_sum"] / s["stair_steps"] if s["stair_steps"] else float("nan"),
         )
         writer.writerow(row)
         csv_file.flush()
@@ -199,9 +283,12 @@ def main():
         if done_it % save_every == 0 or done_it == total:
             saved = run_dir / f"model_{done_it}.pt"
             torch.save(dict(model=ac.state_dict(), optimizer=ppo.opt.state_dict(), iteration=done_it, vmax=env.vmax,
-                            lr=ppo.lr, env_cfg=cfg.as_dict(), stair_stage=env.stage if args.stairs else None), saved)
+                            lr=ppo.lr, env_cfg=cfg.as_dict(), stair_stage=env.stage if args.stairs else None,
+                            stair_vmax=env.stair_vmax.tolist() if args.stairs else None), saved)
         if done_it % log_every == 0 or done_it == total:
             avg = lambda k: float(np.nanmean([r[k] for r in pending])) if not all(np.isnan(r[k]) for r in pending) else float("nan")
+            stair_label = "全阶段 5/10/15cm" if cfg.stair_all_stages else f"{STAIR_STAGES[env.stage][0]*100:.0f} cm / {STAIR_STAGES[env.stage][1]} 级"
+            sv_label = f"；梯速上限 [{env.stair_vmax[0]:.2f}, {env.stair_vmax[1]:.2f}, {env.stair_vmax[2]:.2f}]" if cfg.stair_speed_curriculum else ""
             print(f"[{done_it:>6}/{total} {100 * done_it / total:5.1f}%] 用时 {row['time_s'] / 60:6.1f} 分  {avg('fps'):6.0f} 样本/秒\n"
                   f"    回报/步 {avg('reward_step'):+.4f}  回合回报 {avg('ep_return'):+.2f}  存活 {avg('ep_len'):6.0f}/{env.max_steps} 步  "
                   f"摔倒 {sum(r['falls'] for r in pending)}  超时 {sum(r['timeouts'] for r in pending)}\n"
@@ -210,7 +297,7 @@ def main():
                   f"    价值损失 {avg('value'):.4f}  策略损失 {avg('surrogate'):+.4f}  KL {avg('kl'):.4f}  学习率 {row['lr']:.2e}  动作标准差 {row['std']:.3f}\n"
                   f"    足端外偏 {avg('foot_out_mm'):+.1f} mm（绝对值 {avg('foot_abs_mm'):.1f}）  对称损失 {avg('sym'):.4f}  摆动脚离地 {avg('swing_z_cm'):.1f} cm（<0.8 m/s：{avg('lo_swing_cm'):.1f} cm）\n"
                   f"    晃动：倾角 RMS（横滚+俯仰合成）{avg('tilt_deg'):.2f}°  横滚/俯仰角速度 RMS（合成）{avg('rate_xy'):.3f} rad/s"
-                  + (f"\n    楼梯 {STAIR_STAGES[env.stage][0]*100:.0f} cm / {STAIR_STAGES[env.stage][1]} 级；本段成功 {sum(r['stair_success'] for r in pending)}/{sum(r['stair_done'] for r in pending)}；落脚前腿 {sum(r['front_land'] for r in pending)} 后腿 {sum(r['rear_land'] for r in pending)}" if args.stairs else "")
+                  + (f"\n    楼梯 {stair_label}{sv_label}；本段成功 {sum(r['stair_success'] for r in pending)}/{sum(r['stair_done'] for r in pending)}；横向 |y| 均值 {avg('stair_y_cm'):.1f} cm；落脚前腿 {sum(r['front_land'] for r in pending)} 后腿 {sum(r['rear_land'] for r in pending)}" if args.stairs else "")
                   + (f"\n    已保存 {saved.name}" if saved else ""), flush=True)
             pending = []
     csv_file.close()

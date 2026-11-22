@@ -10,8 +10,6 @@ __pycache__/
 htmlcov/
 
 # Build artifacts
-build/
-dist/
 *.egg-info/
 
 # Local configuration and editor files

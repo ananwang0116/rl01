@@ -10,6 +10,7 @@ Apply these rules without waiting to be asked. The project skill `go2-stairs` su
 ## 1. Plan the supervision before running anything
 
 - Before execution state: the requested outcome, allowed scope, success criterion, where the evidence will live, a deadline, how progress and health will be probed, what happens on failure, and how it will be cleaned up.
+- Regularly check if the timer tool is actually being called.
 - A bare `timeout` limits duration only. It does not show the job is healthy or ready. Anything longer than about two minutes (training, evaluation sweeps, builds, transfers) runs in the background under a supervisor that has a deadline, periodic checks and a known process identity.
 - Report observed state every 30 to 60 seconds during ongoing work: what is true now, what is still uncertain, what the next check is. Do not narrate unchanged polling, and never go quiet.
 - Inner budgets (startup, save, stop) must fit inside the outer deadline.
@@ -77,7 +78,7 @@ Know which concurrency model is in play before touching it. In this project ther
 6. Say in the final answer that the check was done and what, if anything, was intentionally left running.
 
 ## 4. Testing
-
+> If the training effect test involves multiple tests, remember to consider whether you can open several sub-agents to test separately;
 - State what behavior or failure the check should tell apart. Start with the smallest meaningful test, then widen only for a concrete risk.
 - Keep layers separate: logic or unit checks, MuJoCo simulation, sim2sim, real device standing, real motion. Passing one does not prove another.
 - A successful import, spawn, exit code or a "training finished" line proves only that observation. Check required outputs, freshness and behavior.
