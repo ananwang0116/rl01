@@ -1,0 +1,27 @@
+supervisor_started pid=32699 child=32700 deadline_s=260.0
+{"case": "continuous", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 20.0}
+{"case": "stop_restart", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 21.48}
+suite_progress stage=8 speed=0.3 cases=2/16
+{"case": "continuous", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 13.46}
+{"case": "stop_restart", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 15.06}
+suite_progress stage=8 speed=0.5 cases=4/16
+{"case": "continuous", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 10.28}
+{"case": "stop_restart", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 11.98}
+suite_progress stage=8 speed=0.8 cases=6/16
+{"case": "continuous", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 9.28}
+{"case": "stop_restart", "status": "completed", "outcomes": {"success": 6, "fall": 2, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 13.120000000000001}
+suite_progress stage=8 speed=1 cases=8/16
+{"case": "continuous", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 23.38}
+supervisor_health child=32700 alive=True elapsed_s=30.2 silence_s=0.0
+{"case": "stop_restart", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 26.54}
+suite_progress stage=11 speed=0.3 cases=10/16
+{"case": "continuous", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 16.44}
+{"case": "stop_restart", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 17.900000000000002}
+suite_progress stage=11 speed=0.5 cases=12/16
+{"case": "continuous", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 12.26}
+{"case": "stop_restart", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 13.94}
+suite_progress stage=11 speed=0.8 cases=14/16
+{"case": "continuous", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 10.9}
+{"case": "stop_restart", "status": "completed", "outcomes": {"success": 6, "fall": 2, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 14.780000000000001}
+suite_progress stage=11 speed=1 cases=16/16
+supervisor_complete child_exit=0 elapsed_s=54.4 reason=None

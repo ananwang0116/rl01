@@ -1,0 +1,14 @@
+case_done checkpoint=runs/go2_vel2_v6b/model_300.pt profile=clean scenario=forward survived=8/8 xy_error=0.06127567634729723 last_path_error=0.80223909386521
+case_done checkpoint=runs/go2_vel2_v6b/model_300.pt profile=clean scenario=backward survived=8/8 xy_error=0.6991538333590885 last_path_error=11.133316888132992
+case_done checkpoint=runs/go2_vel2_v6b/model_300.pt profile=clean scenario=left survived=8/8 xy_error=0.7000079592337128 last_path_error=11.19949858793531
+case_done checkpoint=runs/go2_vel2_v6b/model_300.pt profile=clean scenario=right survived=8/8 xy_error=0.7000050145485048 last_path_error=11.202277200556576
+case_done checkpoint=runs/go2_vel2_v6b/model_300.pt profile=clean scenario=forward_left survived=8/8 xy_error=0.5001543674259155 last_path_error=7.490975543238141
+case_done checkpoint=runs/go2_vel2_v6b/model_300.pt profile=clean scenario=forward_right survived=8/8 xy_error=0.4934863198126842 last_path_error=7.788036152812519
+case_done checkpoint=runs/go2_vel2_v6b/model_300.pt profile=clean scenario=backward_left survived=8/8 xy_error=0.6998768951999844 last_path_error=11.17469328726456
+case_done checkpoint=runs/go2_vel2_v6b/model_300.pt profile=clean scenario=backward_right survived=8/8 xy_error=0.6999129120386858 last_path_error=11.17540065662843
+case_done checkpoint=runs/go2_vel2_v6b/model_300.pt profile=clean scenario=rotate_left survived=8/8 xy_error=4.469400201659888e-05 last_path_error=0.016614059377065768
+case_done checkpoint=runs/go2_vel2_v6b/model_300.pt profile=clean scenario=rotate_right survived=8/8 xy_error=4.215895587950423e-05 last_path_error=0.01666026207484212
+case_done checkpoint=runs/go2_vel2_v6b/model_300.pt profile=clean scenario=long_forward survived=8/8 xy_error=0.0793005481611249 last_path_error=1.158181375446146
+case_done checkpoint=runs/go2_vel2_v6b/model_300.pt profile=clean scenario=restart survived=8/8 xy_error=0.061697247811954244 last_path_error=0.9255615021384899
+case_done checkpoint=runs/go2_vel2_v6b/model_300.pt profile=clean scenario=direction_switch survived=8/8 xy_error=0.3519987153406705 last_path_error=1.4606399179899834
+evaluation_complete=True cases=13 summary=runs/omni_baseline_clean/summary.json

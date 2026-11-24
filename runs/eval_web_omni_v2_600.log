@@ -1,0 +1,18 @@
+supervisor_started pid=51797 child=51798 deadline_s=150.0
+[web-controls] rep=1 case=W phase=W steps=150 vx=1.1417450986274185 vy=-0.010235310338171754 wz=-0.0003300245105091739 falls=0 resets=0
+[web-controls] rep=1 case=S phase=S steps=150 vx=-0.3239221917859026 vy=-0.0028335558686030564 wz=-0.011745091297027466 falls=0 resets=0
+[web-controls] rep=1 case=A phase=A steps=150 vx=-0.002897922233572932 vy=0.29257092606417634 wz=0.32025300559451697 falls=1 resets=0
+[web-controls] rep=1 case=D phase=D steps=150 vx=0.00012904706566746997 vy=0.0026502176163515374 wz=0.005130992370170276 falls=0 resets=0
+[web-controls] rep=1 case=Q phase=Q steps=150 vx=0.1281839737597257 vy=0.18192049970257487 wz=0.46895157087061745 falls=0 resets=0
+[web-controls] rep=1 case=E phase=E steps=150 vx=-0.0069988250922866455 vy=-0.061110158987175124 wz=-0.566298980518228 falls=0 resets=0
+[web-controls] rep=1 case=WA phase=WA steps=150 vx=0.7600413413852372 vy=0.14238219550918346 wz=0.12134154487728505 falls=0 resets=0
+[web-controls] rep=1 case=WD phase=WD steps=150 vx=0.7196531743083053 vy=-0.16859584739383435 wz=-0.119262206933189 falls=0 resets=0
+[web-controls] rep=1 case=SA phase=SA steps=150 vx=-0.34279898669678344 vy=0.09938686123220078 wz=0.03788308195574409 falls=0 resets=0
+[web-controls] rep=1 case=SD phase=SD steps=150 vx=-0.15770757992023557 vy=-0.05437235306216686 wz=0.0007954211569922448 falls=0 resets=0
+[web-controls] rep=1 case=WQ phase=WQ steps=150 vx=1.1139399622554549 vy=0.005702215162443689 wz=1.0772007227120834 falls=0 resets=0
+[web-controls] rep=1 case=WE phase=WE steps=150 vx=1.186231395916125 vy=0.00659583667974966 wz=-1.0697746366076866 falls=0 resets=0
+[web-controls] rep=1 case=move-stop-move phase=move_1 steps=150 vx=1.1417450986274185 vy=-0.010235310338171754 wz=-0.0003300245105091739 falls=0 resets=0
+[web-controls] rep=1 case=move-stop-move phase=stop steps=150 vx=0.0002685057582993569 vy=-0.0033712764922915815 wz=-0.000819961069507274 falls=0 resets=0
+[web-controls] rep=1 case=move-stop-move phase=move_2 steps=150 vx=1.1431221612053653 vy=-0.0027024655757017773 wz=0.007574360544566465 falls=0 resets=0
+[web-controls] status=complete JSON=/home/an/rl01/runs/web_omni_v2_600.json
+supervisor_complete child_exit=0 elapsed_s=4.9 reason=None

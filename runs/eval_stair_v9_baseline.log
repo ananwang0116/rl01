@@ -1,0 +1,4 @@
+supervisor_started pid=20945 child=20946 deadline_s=170.0
+{"case": "continuous", "status": "completed", "outcomes": {"success": 6, "fall": 2, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 15.76}
+{"case": "stop_restart", "status": "completed", "outcomes": {"success": 7, "fall": 1, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 19.26}
+supervisor_complete child_exit=0 elapsed_s=10.4 reason=None

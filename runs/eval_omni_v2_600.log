@@ -1,0 +1,10 @@
+supervisor_started pid=49045 child=49047 deadline_s=180.0
+case_done checkpoint=runs/go2_omni_v2/model_600.pt profile=clean scenario=backward survived=8/8 xy_error=0.05875926399310621 last_path_error=0.1616069429816374
+case_done checkpoint=runs/go2_omni_v2/model_600.pt profile=clean scenario=left survived=8/8 xy_error=0.3004344847548874 last_path_error=3.510217778915886
+case_done checkpoint=runs/go2_omni_v2/model_600.pt profile=clean scenario=right survived=8/8 xy_error=0.2572767214216755 last_path_error=3.0181174898945535
+case_done checkpoint=runs/go2_omni_v2/model_600.pt profile=clean scenario=rotate_left survived=8/8 xy_error=0.06715299712139618 last_path_error=0.2300128082362004
+case_done checkpoint=runs/go2_omni_v2/model_600.pt profile=clean scenario=rotate_right survived=8/8 xy_error=0.03571997105458012 last_path_error=0.07561135064936941
+case_done checkpoint=runs/go2_omni_v2/model_600.pt profile=clean scenario=long_forward survived=8/8 xy_error=0.0575207924374486 last_path_error=0.5637057130164513
+case_done checkpoint=runs/go2_omni_v2/model_600.pt profile=clean scenario=restart survived=8/8 xy_error=0.054295589665092354 last_path_error=0.5143872253748074
+evaluation_complete=True cases=7 summary=runs/omni_v2_600_clean/summary.json
+supervisor_complete child_exit=0 elapsed_s=22.6 reason=None

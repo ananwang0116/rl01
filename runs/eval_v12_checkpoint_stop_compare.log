@@ -1,0 +1,12 @@
+supervisor_started pid=33597 child=33602 deadline_s=170.0
+{"case": "continuous", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 9.6}
+{"case": "stop_restart", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 11.620000000000001}
+{"case": "continuous", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 10.78}
+{"case": "stop_restart", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 12.64}
+suite_progress stage=8 speed=1 cases=4/8
+{"case": "continuous", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 11.34}
+{"case": "stop_restart", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 13.36}
+{"case": "continuous", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 12.42}
+{"case": "stop_restart", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 14.36}
+suite_progress stage=11 speed=1 cases=8/8
+supervisor_complete child_exit=0 elapsed_s=22.2 reason=None

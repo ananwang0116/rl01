@@ -1,0 +1,77 @@
+{
+  "checkpoint": "/home/an/rl01/runs/go2_stairs_omni_v12/model_600.pt",
+  "remote_checkpoint": "/home/qinshihao/rl01/runs/go2_stairs_omni_v12/model_600.pt",
+  "iteration": 600,
+  "sha256": "82caffee7feca610396c87254f863b8840c5957e10e458093b6cd060f41352cc",
+  "actor_dim": 528,
+  "critic_dim": 69,
+  "verification_layer": "MuJoCo fast-contact simulation only",
+  "selection_reason": "model800 retained but had4/128 nominal stair failures at1m/s sudden stops; model600 passed128/128 and18 flat scenarios8/8",
+  "flat_scenarios": 18,
+  "flat_survivals": 144,
+  "flat_total": 144,
+  "stair_success": 128,
+  "stair_total": 128,
+  "direction_scales": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "robustness_scale": 1.0,
+  "stress_verification": {
+    "seed": 720,
+    "conditions": "full DR/noise, XY .65m/s + xyz angular .35rad/s + z .15m/s impulses",
+    "staircases": {
+      "continuous": {
+        "success": 13,
+        "fall": 3,
+        "timeout": 0
+      },
+      "stop_restart": {
+        "success": 13,
+        "fall": 3,
+        "timeout": 0
+      }
+    },
+    "sampled_flat_seed": 20261124,
+    "sampled_flat_survivals": 63,
+    "sampled_flat_total": 64
+  },
+  "actual_foot_p95_cm_by_speed": {
+    "forward_slow": {
+      "FL": 5.748,
+      "FR": 6.199,
+      "RL": 5.401,
+      "RR": 5.505
+    },
+    "forward_fast": {
+      "FL": 6.384,
+      "FR": 6.354,
+      "RL": 6.396,
+      "RR": 5.864
+    },
+    "forward_max": {
+      "FL": 6.29,
+      "FR": 6.463,
+      "RL": 6.665,
+      "RR": 5.937
+    }
+  },
+  "limits": [
+    "small nominal samples; does not guarantee all starts or disturbances",
+    "actual slow foot lift still above3cm target",
+    "no sim2sim or real hardware validation"
+  ],
+  "aligned_transition_metrics": {
+    "continuous": {
+      "entry_yaw_rate_rms_radps": 0.18900850908325018,
+      "top_heading_rms_deg": 0.3839794165726601
+    },
+    "stop_restart": {
+      "entry_yaw_rate_rms_radps": 0.16740248571620264,
+      "top_heading_rms_deg": 0.6425152517656737
+    }
+  },
+  "verified_at": "2026-11-23T15:46:43.241947+08:00",
+  "continuous_frames_reviewed": true
+}

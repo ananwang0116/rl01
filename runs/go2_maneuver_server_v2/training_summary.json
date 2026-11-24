@@ -1,0 +1,33 @@
+{
+  "verification_layer": "training logs and checkpoint integrity only; no independent evaluation",
+  "iteration": 4000,
+  "samples": 98304000,
+  "wall_seconds": 1215.4,
+  "actor_dim": 240,
+  "critic_dim": 54,
+  "direction_scales": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "sha256": "a2f7cd8efddac873d525d5e9d08fd468c6db597bf25b5a7eb3727abba93ed4b8",
+  "last_500_means": {
+    "straight_heading_deg": 0.620044739616567,
+    "cross_vel_mps": 0.058967224184152234,
+    "heading_tracking": 0.9571662284605288,
+    "reverse_height_cm": 30.221025922339624,
+    "turn_height_cm": 30.362724509964835,
+    "turn_lift_fraction": 0.6480505507822664,
+    "gait_score": 0.5319046304124495,
+    "track_lin": 0.8745866063187978,
+    "track_ang": 0.8686898720758864,
+    "reverse_err": 0.2778464919690604,
+    "lateral_err": 0.2958601464935811,
+    "yaw_err": 0.16288855094253996,
+    "ep_len": 998.1534446492569,
+    "fps": 80986.926,
+    "stop_speed": 0.09916394136714642
+  },
+  "last_500_falls": 39,
+  "last_500_timeouts": 12253
+}

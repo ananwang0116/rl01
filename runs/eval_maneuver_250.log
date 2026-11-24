@@ -1,0 +1,14 @@
+supervisor_started pid=67358 child=67359 deadline_s=210.0
+case_done checkpoint=runs/go2_maneuver_v1/model_250.pt profile=clean scenario=backward survived=8/8 xy_error=0.29965651977270286 last_path_error=3.5082874810480846
+case_done checkpoint=runs/go2_maneuver_v1/model_250.pt profile=clean scenario=rotate_left survived=8/8 xy_error=0.035733113323798985 last_path_error=0.058352281220280626
+case_done checkpoint=runs/go2_maneuver_v1/model_250.pt profile=clean scenario=rotate_right survived=8/8 xy_error=0.03168204717470279 last_path_error=0.031543166642038815
+case_done checkpoint=runs/go2_maneuver_v1/model_250.pt profile=clean scenario=arc_left survived=8/8 xy_error=0.03816212407071381 last_path_error=2.5980459429431453
+case_done checkpoint=runs/go2_maneuver_v1/model_250.pt profile=clean scenario=arc_right survived=8/8 xy_error=0.047407698434117296 last_path_error=2.850088662645149
+case_done checkpoint=runs/go2_maneuver_v1/model_250.pt profile=clean scenario=forward_slow survived=8/8 xy_error=0.036755953081211004 last_path_error=0.2472284117302992
+case_done checkpoint=runs/go2_maneuver_v1/model_250.pt profile=clean scenario=forward_fast survived=8/8 xy_error=0.047264869084012714 last_path_error=1.2701322483887014
+case_done checkpoint=runs/go2_maneuver_v1/model_250.pt profile=clean scenario=forward_max survived=8/8 xy_error=0.04401800571347198 last_path_error=1.303790913655929
+supervisor_health child=67359 alive=True elapsed_s=30.6 silence_s=3.0
+case_done checkpoint=runs/go2_maneuver_v1/model_250.pt profile=clean scenario=long_forward survived=8/8 xy_error=0.05600316062401032 last_path_error=1.003157582656789
+case_done checkpoint=runs/go2_maneuver_v1/model_250.pt profile=clean scenario=restart survived=8/8 xy_error=0.034109519222877645 last_path_error=0.1967797004568257
+evaluation_complete=True cases=10 summary=runs/maneuver_250/summary.json
+supervisor_complete child_exit=0 elapsed_s=34.5 reason=None

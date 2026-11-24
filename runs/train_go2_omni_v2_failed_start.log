@@ -1,0 +1,11 @@
+supervisor_started pid=25400 child=25402 deadline_s=2500.0
+从 runs/go2_omni_v1/model_430.pt 载入网络权重（微调，迭代从 0 开始）
+Traceback (most recent call last):
+  File "/home/an/rl01/src/rl01/train.py", line 382, in <module>
+    main()
+  File "/home/an/rl01/src/rl01/train.py", line 223, in main
+    run_dir.mkdir(parents=True, exist_ok=False)
+  File "/home/an/.local/share/uv/python/cpython-3.11.18-linux-x86_64-gnu/lib/python3.11/pathlib.py", line 1116, in mkdir
+    os.mkdir(self, mode)
+FileExistsError: [Errno 17] File exists: '/home/an/rl01/runs/go2_omni_v2'
+supervisor_complete child_exit=1 elapsed_s=4.5 reason=None

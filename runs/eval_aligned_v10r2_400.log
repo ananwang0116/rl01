@@ -1,0 +1,6 @@
+supervisor_started pid=26171 child=26172 deadline_s=170.0
+{"case": "continuous", "status": "completed", "outcomes": {"success": 7, "fall": 1, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 15.8}
+{"case": "stop_restart", "status": "completed", "outcomes": {"success": 6, "fall": 2, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 19.02}
+{"case": "continuous", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 16.22}
+{"case": "stop_restart", "status": "completed", "outcomes": {"success": 8, "fall": 0, "timeout": 0}, "active_at_end": 0, "simulated_seconds": 17.54}
+supervisor_complete child_exit=0 elapsed_s=18.8 reason=None

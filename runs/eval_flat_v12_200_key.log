@@ -1,0 +1,7 @@
+supervisor_started pid=31535 child=31537 deadline_s=100.0
+case_done checkpoint=runs/go2_stairs_omni_v12/model_200.pt profile=clean scenario=forward_slow survived=8/8 xy_error=0.023907972607413605 last_path_error=0.1354199314012438
+case_done checkpoint=runs/go2_stairs_omni_v12/model_200.pt profile=clean scenario=forward_fast survived=8/8 xy_error=0.0286023716573381 last_path_error=0.5970055463235594
+case_done checkpoint=runs/go2_stairs_omni_v12/model_200.pt profile=clean scenario=forward_max survived=8/8 xy_error=0.10562553991813242 last_path_error=1.9004018669607938
+case_done checkpoint=runs/go2_stairs_omni_v12/model_200.pt profile=clean scenario=right survived=8/8 xy_error=0.09131007806885522 last_path_error=1.1604785160289768
+evaluation_complete=True cases=4 summary=runs/stairs_omni_setup/v12_flat_200_key/summary.json
+supervisor_complete child_exit=0 elapsed_s=14.7 reason=None

@@ -1,0 +1,15 @@
+supervisor_started pid=23269 child=23271 deadline_s=180.0
+case_done checkpoint=runs/go2_omni_v1/model_400.pt profile=clean scenario=backward survived=8/8 xy_error=0.6996680768864467 last_path_error=8.375632179663109
+case_done checkpoint=runs/go2_omni_v1/model_400.pt profile=clean scenario=left survived=8/8 xy_error=0.6998398436116238 last_path_error=8.387697372427635
+case_done checkpoint=runs/go2_omni_v1/model_400.pt profile=clean scenario=right survived=8/8 xy_error=0.6998673765253075 last_path_error=8.39819393185627
+/home/an/rl01/tools/eval/omni.py:173: RuntimeWarning: Mean of empty slice
+  axes[1].plot(t, np.nanmean(trace["velocity"][:, :, k], axis=1), label=label)
+/home/an/rl01/tools/eval/omni.py:177: RuntimeWarning: Mean of empty slice
+  axes[2].plot(t, np.nanmean(np.linalg.norm(xy - desired, axis=2), axis=1), label="position error m")
+/home/an/rl01/tools/eval/omni.py:178: RuntimeWarning: Mean of empty slice
+  axes[2].plot(t, np.nanmean(np.abs(trace["heading_error"]), axis=1), label="heading error rad")
+case_done checkpoint=runs/go2_omni_v1/model_400.pt profile=clean scenario=rotate_left survived=0/8 xy_error=0.1310581570108401 last_path_error=0.32407116007115105
+case_done checkpoint=runs/go2_omni_v1/model_400.pt profile=clean scenario=long_forward survived=8/8 xy_error=0.055164930365555094 last_path_error=0.7476442787579602
+case_done checkpoint=runs/go2_omni_v1/model_400.pt profile=clean scenario=restart survived=8/8 xy_error=0.06411613343773014 last_path_error=0.32367407421872324
+evaluation_complete=True cases=6 summary=runs/omni_v1_clean/summary.json
+supervisor_complete child_exit=0 elapsed_s=17.8 reason=None

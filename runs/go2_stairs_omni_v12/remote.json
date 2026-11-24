@@ -1,0 +1,29 @@
+{
+  "status": "completed",
+  "host": "192.168.88.119",
+  "user": "qinshihao",
+  "remote_run": "/home/qinshihao/rl01/runs/go2_stairs_omni_v12",
+  "job": "train_stairs_omni_v12",
+  "pgid": 1396113,
+  "local_monitor": "monitor_stairs_omni_v12",
+  "monitor_pgid": 31316,
+  "iterations": 800,
+  "init_from": "runs/go2_stairs_omni_v11/model_1554.pt",
+  "flat_teacher": "runs/go2_maneuver_server_v2/model_4000.pt",
+  "updated_at": "2026-11-23T15:46:43.241947+08:00",
+  "source_sha256": {
+    "src/rl01/env.py": "1942aa5a9717591c149262fcdcaacd239054e984072584d2f492b34e2fbd8cdf",
+    "src/rl01/train.py": "bf6c704a792ce8b689ef6bc44daa9e2029dd5d143dd34f174816c8a7018af5a1",
+    "src/rl01/ppo.py": "045004ee4dadd0f81b086452c3b11c694436c24ce48e8cfa41a73c146eea8781",
+    "src/rl01/teacher.py": "e4e80b9b2bbed8171313a95e258534fbe365564774094a682d85734a80503b20",
+    "src/rl01/train_stairs_omni.py": "a81dfb23e8993c242077a0e66c8a7c117916794a20383821ed5c32e08f007fba"
+  },
+  "iteration": 800,
+  "checkpoint": "model_800.pt",
+  "sha256": "696b9ce75e892fe9a86e028eb566483cc85e548eb0afa94797e94a0c45174095",
+  "remote_owned_jobs_running": false,
+  "recommended_checkpoint": "model_600.pt",
+  "recommended_sha256": "82caffee7feca610396c87254f863b8840c5957e10e458093b6cd060f41352cc",
+  "verification_report": "/home/an/rl01/runs/go2_stairs_omni_v12/recommended_policy.json",
+  "owned_jobs_running": false
+}

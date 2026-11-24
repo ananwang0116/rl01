@@ -1,0 +1,19 @@
+{
+  "host": "192.168.88.119",
+  "user": "qinshihao",
+  "workdir": "/home/qinshihao/rl01",
+  "job": "train_go2_maneuver_server_v2",
+  "pgid": 1394308,
+  "local_monitor_pgid": 7283,
+  "source_checkpoint": "runs/go2_maneuver_v1/model_509.pt",
+  "target_iterations": 4000,
+  "train_deadline_seconds": 1700,
+  "supervisor_deadline_seconds": 1760,
+  "status": "completed",
+  "hardware": "Ryzen9 9950X3D / 60GiB / RTX4090 24GB",
+  "only_training": true,
+  "completed_iteration": 4000,
+  "owned_training_processes_running": false,
+  "local_monitor_running": false,
+  "completion_confirmed_at": "2026-11-23T11:40:04+08:00"
+}

@@ -1,0 +1,8 @@
+supervisor_started pid=55949 child=55951 deadline_s=180.0
+case_done checkpoint=runs/go2_omni_v2/model_600.pt profile=clean scenario=backward survived=8/8 xy_error=0.35751329966738915 last_path_error=4.327546457343731
+case_done checkpoint=runs/go2_omni_v2/model_600.pt profile=clean scenario=rotate_left survived=8/8 xy_error=0.09227002746357618 last_path_error=0.471910091884834
+case_done checkpoint=runs/go2_omni_v2/model_600.pt profile=clean scenario=rotate_right survived=8/8 xy_error=0.0737205154856153 last_path_error=0.33548286902308233
+case_done checkpoint=runs/go2_omni_v2/model_600.pt profile=clean scenario=arc_left survived=8/8 xy_error=0.0656012265805776 last_path_error=0.12714460581608306
+case_done checkpoint=runs/go2_omni_v2/model_600.pt profile=clean scenario=arc_right survived=8/8 xy_error=0.07329649525260558 last_path_error=0.12113319737205785
+evaluation_complete=True cases=5 summary=runs/maneuver_before/summary.json
+supervisor_complete child_exit=0 elapsed_s=17.7 reason=None

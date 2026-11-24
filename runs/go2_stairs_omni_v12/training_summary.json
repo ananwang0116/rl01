@@ -1,0 +1,27 @@
+{
+  "checkpoint": "/home/an/rl01/runs/go2_stairs_omni_v12/model_800.pt",
+  "iteration": 800,
+  "sha256": "696b9ce75e892fe9a86e028eb566483cc85e548eb0afa94797e94a0c45174095",
+  "actor_dim": 528,
+  "critic_dim": 69,
+  "training_samples": 19660800,
+  "training_seconds": 359.6,
+  "direction_scales": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "robustness_scale": 1.0,
+  "last200_training_only": {
+    "track_lin": 0.774439403467635,
+    "track_ang": 0.8291051080890053,
+    "heading_deg": 1.2437518450977791,
+    "straight_heading_deg": 1.2625051398082134,
+    "cross_vel_mps": 0.059327926602449184,
+    "stop_speed": 0.07927338565216703,
+    "reverse_height_cm": 30.285649039922614,
+    "turn_height_cm": 30.22318711188846,
+    "teacher_loss": 0.12149967021495103,
+    "robustness_scale": 1.0
+  }
+}

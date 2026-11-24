@@ -1,0 +1,16 @@
+supervisor_started pid=77124 child=77126 deadline_s=200.0
+case_done checkpoint=runs/go2_maneuver_v1/model_500.pt profile=clean scenario=backward survived=8/8 xy_error=0.042511517281744404 last_path_error=0.6239318539505354
+case_done checkpoint=runs/go2_maneuver_v1/model_500.pt profile=clean scenario=left survived=8/8 xy_error=0.18526402148705132 last_path_error=2.513754270008598
+case_done checkpoint=runs/go2_maneuver_v1/model_500.pt profile=clean scenario=right survived=8/8 xy_error=0.20873290471532063 last_path_error=2.707555529102857
+case_done checkpoint=runs/go2_maneuver_v1/model_500.pt profile=clean scenario=rotate_left survived=8/8 xy_error=0.04569989716740351 last_path_error=0.23960540682750753
+case_done checkpoint=runs/go2_maneuver_v1/model_500.pt profile=clean scenario=rotate_right survived=8/8 xy_error=0.05422166494220489 last_path_error=0.2698423749941643
+case_done checkpoint=runs/go2_maneuver_v1/model_500.pt profile=clean scenario=arc_left survived=8/8 xy_error=0.04480459482265998 last_path_error=0.9493876805218429
+case_done checkpoint=runs/go2_maneuver_v1/model_500.pt profile=clean scenario=arc_right survived=8/8 xy_error=0.043583217536157494 last_path_error=0.32312206054558656
+case_done checkpoint=runs/go2_maneuver_v1/model_500.pt profile=clean scenario=forward_slow survived=8/8 xy_error=0.03881746832586602 last_path_error=0.5281682375546113
+case_done checkpoint=runs/go2_maneuver_v1/model_500.pt profile=clean scenario=forward_fast survived=8/8 xy_error=0.08869780576164747 last_path_error=1.3483683334138834
+supervisor_health child=77126 alive=True elapsed_s=30.4 silence_s=1.0
+case_done checkpoint=runs/go2_maneuver_v1/model_500.pt profile=clean scenario=forward_max survived=8/8 xy_error=0.09303561203137556 last_path_error=2.15162741226757
+case_done checkpoint=runs/go2_maneuver_v1/model_500.pt profile=clean scenario=long_forward survived=8/8 xy_error=0.06556520029857107 last_path_error=1.125554325381127
+case_done checkpoint=runs/go2_maneuver_v1/model_500.pt profile=clean scenario=restart survived=8/8 xy_error=0.03824218763076316 last_path_error=0.14375792356894418
+evaluation_complete=True cases=12 summary=runs/maneuver_500/summary.json
+supervisor_complete child_exit=0 elapsed_s=39.4 reason=None

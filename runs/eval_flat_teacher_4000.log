@@ -1,0 +1,22 @@
+supervisor_started pid=21836 child=21838 deadline_s=170.0
+case_done checkpoint=runs/go2_maneuver_server_v2/model_4000.pt profile=clean scenario=forward survived=8/8 xy_error=0.04375387623738719 last_path_error=0.26047313539619854
+case_done checkpoint=runs/go2_maneuver_server_v2/model_4000.pt profile=clean scenario=backward survived=8/8 xy_error=0.03677688798235364 last_path_error=0.5654255684450942
+case_done checkpoint=runs/go2_maneuver_server_v2/model_4000.pt profile=clean scenario=left survived=8/8 xy_error=0.09804571036169461 last_path_error=1.269496416116693
+case_done checkpoint=runs/go2_maneuver_server_v2/model_4000.pt profile=clean scenario=right survived=8/8 xy_error=0.08638076998266439 last_path_error=1.1533946921257443
+case_done checkpoint=runs/go2_maneuver_server_v2/model_4000.pt profile=clean scenario=forward_left survived=8/8 xy_error=0.08408039788034305 last_path_error=1.0155523925734644
+case_done checkpoint=runs/go2_maneuver_server_v2/model_4000.pt profile=clean scenario=forward_right survived=8/8 xy_error=0.06770278423058279 last_path_error=0.8391390892915516
+case_done checkpoint=runs/go2_maneuver_server_v2/model_4000.pt profile=clean scenario=backward_left survived=8/8 xy_error=0.07908582183001038 last_path_error=1.0459029187959712
+case_done checkpoint=runs/go2_maneuver_server_v2/model_4000.pt profile=clean scenario=backward_right survived=8/8 xy_error=0.07735286158969885 last_path_error=1.0370929660218882
+case_done checkpoint=runs/go2_maneuver_server_v2/model_4000.pt profile=clean scenario=rotate_left survived=8/8 xy_error=0.02867562140319078 last_path_error=0.05181696972955649
+case_done checkpoint=runs/go2_maneuver_server_v2/model_4000.pt profile=clean scenario=rotate_right survived=8/8 xy_error=0.032931017887252986 last_path_error=0.06141160862718141
+supervisor_health child=21838 alive=True elapsed_s=30.7 silence_s=0.0
+case_done checkpoint=runs/go2_maneuver_server_v2/model_4000.pt profile=clean scenario=arc_left survived=8/8 xy_error=0.04326191163007289 last_path_error=0.1107866925074714
+case_done checkpoint=runs/go2_maneuver_server_v2/model_4000.pt profile=clean scenario=arc_right survived=8/8 xy_error=0.04431625435676831 last_path_error=0.11056691565176392
+case_done checkpoint=runs/go2_maneuver_server_v2/model_4000.pt profile=clean scenario=forward_slow survived=8/8 xy_error=0.03319824206586191 last_path_error=0.09578377253631037
+case_done checkpoint=runs/go2_maneuver_server_v2/model_4000.pt profile=clean scenario=forward_fast survived=8/8 xy_error=0.03801168335969649 last_path_error=0.46102282049280807
+case_done checkpoint=runs/go2_maneuver_server_v2/model_4000.pt profile=clean scenario=forward_max survived=8/8 xy_error=0.03925038579816488 last_path_error=0.79102446379959
+case_done checkpoint=runs/go2_maneuver_server_v2/model_4000.pt profile=clean scenario=long_forward survived=8/8 xy_error=0.04983756834674957 last_path_error=0.47809511413487465
+case_done checkpoint=runs/go2_maneuver_server_v2/model_4000.pt profile=clean scenario=restart survived=8/8 xy_error=0.05687755737537313 last_path_error=0.2123313413771491
+case_done checkpoint=runs/go2_maneuver_server_v2/model_4000.pt profile=clean scenario=direction_switch survived=8/8 xy_error=0.08000400009409067 last_path_error=0.050788860493432064
+evaluation_complete=True cases=18 summary=runs/stairs_omni_setup/flat_teacher/summary.json
+supervisor_complete child_exit=0 elapsed_s=56.8 reason=None

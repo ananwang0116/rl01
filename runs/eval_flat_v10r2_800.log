@@ -1,0 +1,22 @@
+supervisor_started pid=26826 child=26827 deadline_s=170.0
+case_done checkpoint=runs/go2_stairs_omni_v10r2/model_800.pt profile=clean scenario=forward survived=8/8 xy_error=0.036167831476815765 last_path_error=0.4649705468098251
+case_done checkpoint=runs/go2_stairs_omni_v10r2/model_800.pt profile=clean scenario=backward survived=8/8 xy_error=0.06650490545550745 last_path_error=0.783482849032922
+case_done checkpoint=runs/go2_stairs_omni_v10r2/model_800.pt profile=clean scenario=left survived=8/8 xy_error=0.2034260599061002 last_path_error=2.581951037965932
+case_done checkpoint=runs/go2_stairs_omni_v10r2/model_800.pt profile=clean scenario=right survived=8/8 xy_error=0.18213236978283603 last_path_error=2.548821390539465
+case_done checkpoint=runs/go2_stairs_omni_v10r2/model_800.pt profile=clean scenario=forward_left survived=8/8 xy_error=0.17013600374311566 last_path_error=1.8878341344327878
+case_done checkpoint=runs/go2_stairs_omni_v10r2/model_800.pt profile=clean scenario=forward_right survived=8/8 xy_error=0.1448374705597772 last_path_error=1.5031894316712726
+case_done checkpoint=runs/go2_stairs_omni_v10r2/model_800.pt profile=clean scenario=backward_left survived=8/8 xy_error=0.1396087841404429 last_path_error=1.51375691217721
+case_done checkpoint=runs/go2_stairs_omni_v10r2/model_800.pt profile=clean scenario=backward_right survived=8/8 xy_error=0.0934080258641921 last_path_error=1.00845436416915
+case_done checkpoint=runs/go2_stairs_omni_v10r2/model_800.pt profile=clean scenario=rotate_left survived=8/8 xy_error=0.0843822479712498 last_path_error=0.3140090300963185
+case_done checkpoint=runs/go2_stairs_omni_v10r2/model_800.pt profile=clean scenario=rotate_right survived=8/8 xy_error=0.087951977354182 last_path_error=0.2845775591052518
+supervisor_health child=26827 alive=True elapsed_s=30.3 silence_s=1.0
+case_done checkpoint=runs/go2_stairs_omni_v10r2/model_800.pt profile=clean scenario=arc_left survived=8/8 xy_error=0.05451332670842383 last_path_error=0.19768735435552065
+case_done checkpoint=runs/go2_stairs_omni_v10r2/model_800.pt profile=clean scenario=arc_right survived=8/8 xy_error=0.08126052682969097 last_path_error=0.17293404034016568
+case_done checkpoint=runs/go2_stairs_omni_v10r2/model_800.pt profile=clean scenario=forward_slow survived=8/8 xy_error=0.046662510756637306 last_path_error=0.596017929876427
+case_done checkpoint=runs/go2_stairs_omni_v10r2/model_800.pt profile=clean scenario=forward_fast survived=8/8 xy_error=0.0355281319586116 last_path_error=0.9122046615751117
+case_done checkpoint=runs/go2_stairs_omni_v10r2/model_800.pt profile=clean scenario=forward_max survived=8/8 xy_error=0.04105701199162712 last_path_error=1.474955199304814
+case_done checkpoint=runs/go2_stairs_omni_v10r2/model_800.pt profile=clean scenario=long_forward survived=8/8 xy_error=0.02548328382583034 last_path_error=0.3500455524434134
+case_done checkpoint=runs/go2_stairs_omni_v10r2/model_800.pt profile=clean scenario=restart survived=8/8 xy_error=0.059689188793645626 last_path_error=0.2822972906557425
+case_done checkpoint=runs/go2_stairs_omni_v10r2/model_800.pt profile=clean scenario=direction_switch survived=8/8 xy_error=0.11412721105845025 last_path_error=0.4255306041225423
+evaluation_complete=True cases=18 summary=runs/stairs_omni_setup/flat_800/summary.json
+supervisor_complete child_exit=0 elapsed_s=54.3 reason=None

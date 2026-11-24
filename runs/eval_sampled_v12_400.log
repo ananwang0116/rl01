@@ -1,0 +1,11 @@
+supervisor_started pid=31971 child=31972 deadline_s=170.0
+case_done checkpoint=runs/go2_stairs_omni_v12/model_400.pt profile=stress scenario=forward_max survived=8/8 xy_error=0.14680709180820864 last_path_error=1.6719662764339671
+case_done checkpoint=runs/go2_stairs_omni_v12/model_400.pt profile=stress scenario=backward survived=8/8 xy_error=0.08561156050291799 last_path_error=0.658665293979443
+case_done checkpoint=runs/go2_stairs_omni_v12/model_400.pt profile=stress scenario=left survived=8/8 xy_error=0.11891670850964386 last_path_error=1.2120989765776746
+case_done checkpoint=runs/go2_stairs_omni_v12/model_400.pt profile=stress scenario=right survived=8/8 xy_error=0.10278982526645458 last_path_error=1.0020491333081485
+case_done checkpoint=runs/go2_stairs_omni_v12/model_400.pt profile=stress scenario=rotate_left survived=8/8 xy_error=0.09097695506175647 last_path_error=0.248695416833544
+case_done checkpoint=runs/go2_stairs_omni_v12/model_400.pt profile=stress scenario=rotate_right survived=8/8 xy_error=0.08167037565246764 last_path_error=0.23346436098922155
+case_done checkpoint=runs/go2_stairs_omni_v12/model_400.pt profile=stress scenario=restart survived=8/8 xy_error=0.1055338678274775 last_path_error=0.4772403867976103
+case_done checkpoint=runs/go2_stairs_omni_v12/model_400.pt profile=stress scenario=direction_switch survived=8/8 xy_error=0.11201080158834623 last_path_error=0.2911252775634586
+evaluation_complete=True cases=8 summary=runs/stairs_omni_setup/v12_sampled_400/summary.json
+supervisor_complete child_exit=0 elapsed_s=25.5 reason=None
