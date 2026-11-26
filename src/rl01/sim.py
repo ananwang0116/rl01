@@ -9,17 +9,18 @@ import mujoco
 import numpy as np
 
 SCENE = Path(__file__).resolve().parents[2] / "models" / "unitree_go2" / "scene.xml"
+D1_MAX_SCENE = SCENE.parent.parent / "agibot_d1_max" / "scene.xml"
 LEGS = ["FL", "FR", "RL", "RR"]
 KP, KD = 60.0, 2.0  # 静态站立需要较大刚度；kp=20 时机身会塌到 0.195 m
 
 
-def build_model(step_h=0.0, n_steps=4, tread=0.30, x0=0.6, half_width=0.6, top_len=1.0):
-    """加载 Go2 场景；step_h>0 时在前方（+x）加楼梯。
+def build_model(step_h=0.0, n_steps=4, tread=0.30, x0=0.6, half_width=0.6, top_len=1.0, *, scene=SCENE):
+    """加载 MuJoCo 场景（默认 Go2）；step_h>0 时在前方（+x）加楼梯。
 
     每一级是一个从地面堆到该级高度的 box；最后一级向后延伸 top_len 当平台。
     注意 MuJoCo 的 box size 是半长。
     """
-    spec = mujoco.MjSpec.from_file(str(SCENE))
+    spec = mujoco.MjSpec.from_file(str(scene))
     if step_h > 0:
         for i in range(n_steps):
             depth = tread + (top_len if i == n_steps - 1 else 0.0)
@@ -51,7 +52,15 @@ def pd_step(model, data, q_target, kp=KP, kd=KD):
 
 
 def simulate(model, data, target_fn, seconds=None, view=False, on_second=None, kp=KP, kd=KD):
-    """跑仿真。target_fn(t) 返回 12 个关节的目标角。
+    """使用力矩 PD 控制。target_fn(t) 返回各关节的目标角。"""
+    def step():
+        pd_step(model, data, target_fn(data.time), kp, kd)
+
+    run_simulation(model, data, step, seconds=seconds, view=view, on_second=on_second)
+
+
+def run_simulation(model, data, step, *, seconds=None, view=False, on_second=None):
+    """重复调用 step() 推进仿真。
 
     view=True：打开查看器并**一直开着**，直到你关掉窗口（seconds 被忽略），按真实时间播放。
     view=False：无界面，跑 seconds 秒，尽快算完。
@@ -62,7 +71,7 @@ def simulate(model, data, target_fn, seconds=None, view=False, on_second=None, k
 
     def tick():
         nonlocal last_sec
-        pd_step(model, data, target_fn(data.time), kp, kd)
+        step()
         sec = int(data.time)
         if on_second and sec != last_sec:
             last_sec = sec

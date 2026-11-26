@@ -35,7 +35,8 @@ class ActorCritic(nn.Module):
 
 class PPO:
     def __init__(self, ac, lr=1e-3, gamma=0.99, lam=0.95, clip=0.2, epochs=5, minibatches=4,
-                 entropy_coef=0.01, value_coef=1.0, max_grad_norm=1.0, desired_kl=0.01, mirror=None, sym_coef=0.0):
+                 entropy_coef=0.01, value_coef=1.0, max_grad_norm=1.0, desired_kl=0.01, mirror=None, sym_coef=0.0,
+                 flat_teacher_coef=0.0):
         self.ac, self.lr = ac, lr
         self.gamma, self.lam, self.clip = gamma, lam, clip
         self.epochs, self.minibatches = epochs, minibatches
@@ -43,6 +44,7 @@ class PPO:
         self.max_grad_norm, self.desired_kl = max_grad_norm, desired_kl
         self.mirror_obs, self.mirror_act = mirror if mirror else (None, None)
         self.sym_coef = sym_coef
+        self.flat_teacher_coef = flat_teacher_coef
         self.opt = torch.optim.Adam(ac.parameters(), lr=lr)
 
     def update(self, st, last_value):
@@ -62,10 +64,13 @@ class PPO:
         flat = lambda x: x.reshape(T * N, *x.shape[2:])
         obs, cobs, act, logp0 = flat(st["obs"]), flat(st["cobs"]), flat(st["act"]), flat(st["logp"])
         val0, mu0, sig0, adv, ret = flat(st["val"]), flat(st["mu"]), flat(st["sigma"]), flat(adv), flat(ret)
+        teacher_target = flat(st['teacher_target']) if self.flat_teacher_coef > 0 else None
+        teacher_mask = flat(st['teacher_mask']).bool() if self.flat_teacher_coef > 0 else None
 
         B = T * N
         mb = B // self.minibatches
         s_loss = v_loss = kl_mean = sym_mean = 0.0
+        teacher_error_sum = teacher_count = 0.0
         n = 0
         for _ in range(self.epochs):
             perm = torch.randperm(B, device=obs.device)
@@ -89,6 +94,13 @@ class PPO:
                 v_clip = val0[i] + (value - val0[i]).clamp(-self.clip, self.clip)
                 vl = torch.max((value - ret[i]) ** 2, (v_clip - ret[i]) ** 2).mean()
                 loss = surr + self.value_coef * vl - self.entropy_coef * d.entropy().sum(-1).mean()
+                if teacher_target is not None:
+                    selected = teacher_mask[i]
+                    if selected.any():
+                        teacher_error = (d.mean[selected] - teacher_target[i][selected]).square().mean(-1)
+                        loss = loss + self.flat_teacher_coef * teacher_error.mean()
+                        teacher_error_sum += teacher_error.detach().sum().item()
+                        teacher_count += selected.sum().item()
                 if self.mirror_obs is not None:  # 镜像对称损失：actor(镜像观测) 应当等于 镜像(actor(观测))
                     target = self.mirror_act(d.mean).detach()
                     sym = ((self.ac.actor(self.mirror_obs(obs[i])) - target) ** 2).mean()
@@ -99,4 +111,5 @@ class PPO:
                 nn.utils.clip_grad_norm_(self.ac.parameters(), self.max_grad_norm)
                 self.opt.step()
                 s_loss += surr.item(); v_loss += vl.item(); kl_mean += kl.item(); n += 1
-        return dict(surrogate=s_loss / n, value=v_loss / n, kl=kl_mean / n, lr=self.lr, sym=sym_mean / n)
+        return dict(surrogate=s_loss / n, value=v_loss / n, kl=kl_mean / n, lr=self.lr, sym=sym_mean / n,
+                    teacher_loss=teacher_error_sum / max(1, teacher_count))

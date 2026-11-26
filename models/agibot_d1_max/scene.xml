@@ -1,0 +1,21 @@
+<mujoco model="D1 Max flat ground">
+  <include file="d1_max.xml"/>
+  <statistic center="0 0 0.3" extent="1.1"/>
+  <visual>
+    <quality shadowsize="4096"/>
+    <headlight diffuse="0.65 0.65 0.65" ambient="0.4 0.4 0.4" specular="0.1 0.1 0.1"/>
+    <rgba haze="0.16 0.21 0.27 1"/>
+    <global azimuth="120" elevation="-16" offwidth="1280" offheight="800"/>
+  </visual>
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.38 0.48 0.58" rgb2="0.13 0.17 0.23"
+             width="256" height="1536"/>
+    <texture type="2d" name="ground" builtin="checker" mark="edge" rgb1="0.22 0.27 0.32"
+             rgb2="0.18 0.22 0.27" markrgb="0.4 0.45 0.50" width="256" height="256"/>
+    <material name="ground" texture="ground" texuniform="true" texrepeat="3 3"/>
+  </asset>
+  <worldbody>
+    <light pos="0 0 2.5" dir="0.3 0.2 -1" directional="true"/>
+    <geom name="floor" type="plane" size="0 0 0.05" material="ground" friction="0.9 0.005 0.0001"/>
+  </worldbody>
+</mujoco>

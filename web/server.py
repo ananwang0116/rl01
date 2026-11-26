@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import re
 import struct
 import sys
@@ -30,9 +31,11 @@ SRC_DIR = ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from rl01.env import ACTION_SCALE, DECIMATION, DEFAULT_Q, KD, KP, N_OBS, TORQUE_LIMIT  # noqa: E402
+from rl01.env import ACTION_SCALE, DECIMATION, DEFAULT_Q, KD, KP, TORQUE_LIMIT  # noqa: E402
+from rl01 import env as env_contract  # noqa: E402
 from rl01.play import load_policy  # noqa: E402
 from rl01.sim import LEGS, SCENE  # noqa: E402
+from rl01.web_d1_max import DEFAULT_CHECKPOINT as DEFAULT_D1_CHECKPOINT, D1Preview  # noqa: E402
 
 JOINT_NAMES = [
     f"{leg}_{part}_joint"
@@ -53,27 +56,45 @@ STAIR_HALF_WIDTH = 0.65
 STAIR_TOP_LEN = 1.2
 
 
+def turn_rate_limit(vx: float, vy: float, turn_radius: float = 1.0, inplace_yaw_rate: float = 0.8) -> float:
+    """Moving turns use radius/speed coupling; stationary turns use an independent rate."""
+    speed = math.hypot(vx, vy)
+    return min(1.2, speed / turn_radius) if speed > 1e-6 else inplace_yaw_rate
+
+
+def keyboard_command(keys: str, speed_limit: float, turn_radius: float = 1.0, inplace_yaw_rate: float = 0.8) -> list[float]:
+    """Shared backend/evaluator equivalent of app.js keyboard and normalized yaw mapping."""
+    keys = keys.upper()
+    x = int("W" in keys) - int("S" in keys)
+    y = int("A" in keys) - int("D" in keys)
+    norm = max(1.0, math.hypot(x, y))
+    vx = x * (speed_limit * 0.6 if x < 0 else speed_limit) / norm
+    vy = y * min(speed_limit, 0.6) / norm
+    yaw_input = int("Q" in keys) - int("E" in keys)
+    return [vx, vy, yaw_input * turn_rate_limit(vx, vy, turn_radius, inplace_yaw_rate)]
+
+
+def stairs_geometry(step_h: float, n_steps: int, tread: float) -> list[dict]:
+    if step_h <= 0:
+        return []
+    boxes = []
+    for i in range(n_steps):
+        depth = tread + (STAIR_TOP_LEN if i == n_steps - 1 else 0.0)
+        half_height = (i + 1) * step_h / 2
+        boxes.append({
+            "pos": [STAIR_X0 + i * tread + depth / 2, 0.0, half_height],
+            "size": [depth / 2, STAIR_HALF_WIDTH, half_height],
+            "rgba": [0.76, 0.63, 0.45, 1.0],
+        })
+    return boxes
+
+
 def build_sim_model(step_h: float = 0.0, n_steps: int = 10, tread: float = 0.25) -> tuple[mujoco.MjModel, list[dict]]:
     """构建带可视化网格与 PD 执行器的 Go2 MuJoCo 模型，并记录楼梯几何描述。"""
     spec = mujoco.MjSpec.from_file(str(SCENE))
-    stairs_meta: list[dict] = []
-    if step_h > 0 and n_steps > 0:
-        for i in range(n_steps):
-            depth = tread + (STAIR_TOP_LEN if i == n_steps - 1 else 0.0)
-            height = (i + 1) * step_h
-            cx = STAIR_X0 + i * tread + depth / 2.0
-            spec.worldbody.add_geom(
-                name=f"stair{i}",
-                type=mujoco.mjtGeom.mjGEOM_BOX,
-                size=[depth / 2.0, STAIR_HALF_WIDTH, height / 2.0],
-                pos=[cx, 0.0, height / 2.0],
-                rgba=[0.76, 0.63, 0.45, 1.0],
-            )
-            stairs_meta.append({
-                "pos": [cx, 0.0, height / 2.0],
-                "size": [depth / 2.0, STAIR_HALF_WIDTH, height / 2.0],
-                "rgba": [0.76, 0.63, 0.45, 1.0],
-            })
+    stairs_meta = stairs_geometry(step_h, n_steps, tread)
+    for i, box in enumerate(stairs_meta):
+        spec.worldbody.add_geom(name=f"stair{i}", type=mujoco.mjtGeom.mjGEOM_BOX, **box)
 
     for i, act in enumerate(spec.actuators):
         lim = float(TORQUE_LIMIT[i])
@@ -153,7 +174,8 @@ def scan_checkpoints() -> list[str]:
     if not runs_dir.exists():
         return []
     pts = sorted(runs_dir.rglob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True)
-    return [str(p.relative_to(ROOT)) for p in pts]
+    return [str(p.relative_to(ROOT)) for p in pts
+            if not p.relative_to(runs_dir).parts[0].startswith(("d1_", "d1max_", "d1_max_"))]
 
 
 def scan_logs() -> list[str]:
@@ -267,7 +289,12 @@ class SimEngine:
 
         # 控制与状态
         self.cmd = np.zeros(3, dtype=np.float64)  # vx, vy, wz
+        self.command_owner = None
+        self.target_yaw = 0.0
+        self.gait_phase = 0.0
         self.speed_limit = 1.2
+        self.turn_radius = 1.0
+        self.inplace_yaw_rate = 0.8
         self.q_target = DEFAULT_Q.copy()
         self.posture_from = DEFAULT_Q.copy()
         self.posture_to = DEFAULT_Q.copy()
@@ -288,16 +315,27 @@ class SimEngine:
         self.checkpoint_path = ""
         self.policy = None
         self.obs_taps = (0,)
-        self.obs_hist = np.zeros((1, N_OBS), dtype=np.float32)
+        self.obs_dim = 45  # infer per frame; 45 legacy, 46 heading, 48 heading+gait phase
+        self.policy_info = {}
+        self.policy_cfg = env_contract.EnvCfg()
+        self.obs_hist = np.zeros((1, self.obs_dim), dtype=np.float32)
         self.last_action = np.zeros(12, dtype=np.float64)
 
         self.reset()
         if self.checkpoints:
-            # 优先挑一个平地或楼梯常见模型作为默认预加载
+            # 默认指向经评估选出的策略；没有选择文件时沿用旧模型。
             preferred = next(
                 (p for p in self.checkpoints if "vel2" in p and p.endswith(".pt")),
                 self.checkpoints[0],
             )
+            selection = ROOT / 'runs' / 'active_policy.json'
+            if selection.is_file():
+                try:
+                    selected = json.loads(selection.read_text()).get('checkpoint')
+                    if selected in self.checkpoints:
+                        preferred = selected
+                except (OSError, ValueError):
+                    pass
             self.load_checkpoint(preferred)
 
     def reset(self):
@@ -306,6 +344,9 @@ class SimEngine:
         self.data.qpos[3:7] = [1.0, 0.0, 0.0, 0.0]
         self.data.qpos[7:] = DEFAULT_Q
         self.data.qvel[:] = 0.0
+        self.cmd[:] = 0.0
+        self.target_yaw = quat_to_rot_and_euler(self.data.qpos[3:7])[3]
+        self.gait_phase = 0.0
         self.q_target = DEFAULT_Q.copy()
         self.posture_from = DEFAULT_Q.copy()
         self.posture_to = DEFAULT_Q.copy()
@@ -341,25 +382,60 @@ class SimEngine:
         self.foot_body_ids = [self.model.body(f"{leg}_calf").id for leg in LEGS]
         self.reset()
 
+    def terrain_settings(self):
+        return {"kind": self.terrain_kind, "step_h_cm": self.step_h_cm,
+                "n_steps": self.n_steps, "tread_cm": self.tread_cm}
+
     def load_checkpoint(self, rel_path: str) -> dict:
         full = (ROOT / rel_path).resolve()
         if not full.exists():
             return {"ok": False, "error": f"不存在: {rel_path}"}
         try:
             pol, ck = load_policy(str(full))
-            taps = tuple(ck.get("env_cfg", {}).get("obs_taps") or (0,))
+            cfg = ck.get("env_cfg", {})
+            taps = tuple(int(t) for t in (cfg.get("obs_taps") or (0,)))
+            if not taps or taps[0] != 0 or min(taps) < 0:
+                raise ValueError("obs_taps 必须从 0 开始且为非负整数")
+            if "model" in ck:
+                actor_dim = int(ck["model"]["actor.0.weight"].shape[1])
+            else:  # packed legacy blend: both members use the same observation contract
+                actor_dim = int(ck["blend"]["low_model"]["actor.0.weight"].shape[1])
+            obs_dim, remainder = divmod(actor_dim, len(taps))
+            if remainder or obs_dim not in (45, 46, 48):
+                raise ValueError(f"不支持的观测约定: actor={actor_dim}, taps={taps}")
+            policy_cfg = env_contract.EnvCfg(**cfg)
+            if obs_dim == 48 and not all(hasattr(env_contract, name) for name in ("gait_frequency", "gait_phase_features")):
+                raise ValueError("48维步态策略需要训练环境提供 gait_frequency/gait_phase_features")
             self.policy = pol
+            self.policy_cfg = policy_cfg
             self.obs_taps = taps
+            self.obs_dim = obs_dim
+            self.policy_info = {
+                "obs_dim": obs_dim,
+                "heading_hold": obs_dim in (46, 48),
+                "gait_phase_obs": obs_dim == 48,
+                "omni": bool(cfg.get("omni", False)),
+                "vy_range": float(cfg.get("vy_range", 0.0)),
+                "yaw_range": float(cfg.get("yaw_range", 0.0)),
+                "vx_max": float(cfg.get("vx_max", ck.get("vmax", 0.0))),
+                "reverse_max": float(cfg.get("reverse_max", 0.0)),
+                "current_vmax": float(ck.get("vmax", cfg.get("vx_max", 0.0))),
+                "turn_radius_range": list(cfg.get("turn_radius_range", ())),
+                "maneuver_gait": bool(cfg.get("maneuver_gait", False)),
+                "turn_step_height": float(cfg.get("turn_step_height", 0.0)),
+                "gait_frequency": float(policy_cfg.gait_frequency),
+                "gait_frequency_speed": float(policy_cfg.gait_frequency_speed),
+            }
             self.checkpoint_path = rel_path
+            self.target_yaw = quat_to_rot_and_euler(self.data.qpos[3:7])[3]
+            self.gait_phase = 0.0
             self._reset_obs_hist()
-            return {"ok": True, "checkpoint": rel_path, "obs_taps": list(taps)}
+            return {"ok": True, "checkpoint": rel_path, "obs_taps": list(taps), "policy_info": self.policy_info}
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 
     def _compute_single_obs(self) -> np.ndarray:
-        R, _, _, _ = quat_to_rot_and_euler(self.data.qpos[3:7])
-        lin_w = self.data.qvel[:3]
-        _ = R.T @ lin_w
+        R, _, _, yaw = quat_to_rot_and_euler(self.data.qpos[3:7])
         ang_b = self.data.qvel[3:6]
         g_b = -R[2, :]
         q = self.data.qpos[7:]
@@ -373,7 +449,32 @@ class SimEngine:
             dq * 0.05,
             self.last_action,
         ]).astype(np.float32)
+        if self.obs_dim in (46, 48):
+            # Same contract as training: signed shortest target-current heading,
+            # appended after all 45 legacy inputs (including last action).
+            error = np.arctan2(np.sin(self.target_yaw - yaw), np.cos(self.target_yaw - yaw))
+            obs = np.append(obs, np.float32(error * 0.5)).astype(np.float32)
+        if self.obs_dim == 48:
+            phase = env_contract.gait_phase_features(np.array([self.gait_phase]), self.cmd[None, :])
+            obs = np.concatenate([obs, phase[0]]).astype(np.float32)
         return obs
+
+    def set_command(self, vx: float = 0.0, vy: float = 0.0, wz: float = 0.0):
+        values = np.asarray([vx, vy, wz], dtype=np.float64)
+        if not np.isfinite(values).all():
+            return
+        xy = np.clip(values[:2], [-self.speed_limit, -0.8], [self.speed_limit, 0.8])
+        yaw_limit = turn_rate_limit(*xy, self.turn_radius, self.inplace_yaw_rate)
+        # Frontend already converts normalized yaw input into rad/s. Only clip
+        # here: multiplying by the speed again would shrink curvature twice.
+        self.cmd[:] = [*xy, float(np.clip(values[2], -yaw_limit, yaw_limit))]
+
+    def set_turn_config(self, turn_radius: float = 1.0, inplace_yaw_rate: float = 0.8):
+        values = np.asarray([turn_radius, inplace_yaw_rate], dtype=np.float64)
+        if not np.isfinite(values).all():
+            return
+        self.turn_radius = float(np.clip(values[0], 0.25, 5.0))
+        self.inplace_yaw_rate = float(np.clip(values[1], 0.3, 1.2))
 
     def _reset_obs_hist(self):
         hist_len = max(self.obs_taps) + 1
@@ -398,9 +499,12 @@ class SimEngine:
             self.posture_to = DEFAULT_Q.copy()
             self.posture_t = 0.0
             self.q_target = q_now
-        elif mode == "rl":
+        elif mode == "rl" and prev != "rl":
+            self.target_yaw = quat_to_rot_and_euler(self.data.qpos[3:7])[3]
             self.last_action[:] = 0.0
             self._reset_obs_hist()
+        if mode != "rl":
+            self.cmd[:] = 0.0
         self._apply_pd_gains()
 
     def trigger_posture(self, name: str, dur: float):
@@ -443,6 +547,9 @@ class SimEngine:
 
         # 1. 计算目标关节角
         if self.mode == "rl" and self.policy is not None:
+            # Refresh only the current frame so newly received stop/move commands
+            # take effect now, without clearing the policy's observation history.
+            self.obs_hist[0] = self._compute_single_obs()
             obs = self._get_actor_obs()
             act = self.policy.actor(torch.as_tensor(obs)).numpy()[0]
             act = np.clip(act, -10.0, 10.0)
@@ -471,6 +578,14 @@ class SimEngine:
             self.sustain_left = max(0.0, self.sustain_left - self.dt)
 
         # 3. 推进物理 (10 个子步)
+        if self.mode == "rl":
+            self.target_yaw = float(np.arctan2(
+                np.sin(self.target_yaw + self.cmd[2] * self.dt),
+                np.cos(self.target_yaw + self.cmd[2] * self.dt),
+            ))
+            if self.obs_dim == 48 and np.linalg.norm(self.cmd) >= 0.1:
+                frequency = float(env_contract.gait_frequency(self.cmd[None, :], self.policy_cfg)[0])
+                self.gait_phase = float((self.gait_phase + 2.0 * np.pi * frequency * self.dt) % (2.0 * np.pi))
         for _ in range(DECIMATION):
             mujoco.mj_step(self.model, self.data)
 
@@ -572,12 +687,11 @@ class SimEngine:
             "mode": self.mode,
             "falls": self.falls,
             "checkpoint": self.checkpoint_path,
-            "terrain": {
-                "kind": self.terrain_kind,
-                "step_h_cm": self.step_h_cm,
-                "n_steps": self.n_steps,
-                "tread_cm": self.tread_cm,
-            },
+            "policy_info": self.policy_info,
+            "control_config": {"turn_radius": self.turn_radius, "inplace_yaw_rate": self.inplace_yaw_rate},
+            "target_yaw": float(np.degrees(self.target_yaw)),
+            "heading_error": float(np.degrees(np.arctan2(np.sin(self.target_yaw - yaw), np.cos(self.target_yaw - yaw)))),
+            "terrain": self.terrain_settings(),
             "base_pos": [float(self.data.qpos[0]), float(self.data.qpos[1]), float(self.data.qpos[2])],
             "vx": float(lin_b[0]),
             "vy": float(lin_b[1]),
@@ -614,7 +728,7 @@ async def handle_ws(ws: ServerConnection, engine: SimEngine):
     CLIENTS.add(ws)
     try:
         # 连接时立刻同步一次楼梯描述
-        await ws.send(json.dumps({"type": "stairs", "stairs": engine.stairs_meta}))
+        await ws.send(json.dumps({"type": "stairs", "stairs": engine.stairs_meta, "terrain": engine.terrain_settings()}))
         async for raw in ws:
             try:
                 msg = json.loads(raw)
@@ -622,12 +736,13 @@ async def handle_ws(ws: ServerConnection, engine: SimEngine):
                 continue
             action = msg.get("action")
             if action == "cmd":
-                lim = engine.speed_limit
-                engine.cmd[0] = float(np.clip(msg.get("vx", 0.0), -lim, lim))
-                engine.cmd[1] = float(np.clip(msg.get("vy", 0.0), -0.8, 0.8))
-                engine.cmd[2] = float(np.clip(msg.get("wz", 0.0), -2.0, 2.0))
+                engine.set_turn_config(msg.get("turn_radius", engine.turn_radius),
+                                       msg.get("inplace_yaw_rate", engine.inplace_yaw_rate))
+                engine.set_command(msg.get("vx", 0.0), msg.get("vy", 0.0), msg.get("wz", 0.0))
+                engine.command_owner = ws
             elif action == "speed_limit":
                 engine.speed_limit = float(np.clip(msg.get("value", 1.2), 0.2, 2.5))
+                engine.set_command(*engine.cmd)
             elif action == "mode":
                 engine.set_mode(msg.get("mode", "standby"))
             elif action == "connect":
@@ -656,7 +771,7 @@ async def handle_ws(ws: ServerConnection, engine: SimEngine):
                     int(msg.get("n_steps", 10)),
                     float(msg.get("tread_cm", 25.0)),
                 )
-                payload = json.dumps({"type": "stairs", "stairs": engine.stairs_meta})
+                payload = json.dumps({"type": "stairs", "stairs": engine.stairs_meta, "terrain": engine.terrain_settings()})
                 await asyncio.gather(*(c.send(payload) for c in list(CLIENTS)), return_exceptions=True)
             elif action == "checkpoint":
                 res = engine.load_checkpoint(msg.get("path", ""))
@@ -678,6 +793,9 @@ async def handle_ws(ws: ServerConnection, engine: SimEngine):
                 )
     finally:
         CLIENTS.discard(ws)
+        if engine.command_owner is ws:
+            engine.set_command()
+            engine.command_owner = None
 
 
 async def sim_broadcast_loop(engine: SimEngine):
@@ -698,13 +816,20 @@ async def sim_broadcast_loop(engine: SimEngine):
             await asyncio.gather(*(c.send(pkt) for c in list(CLIENTS)), return_exceptions=True)
 
 
-async def run_server(host: str, port: int):
+async def run_server(host: str, port: int, d1_checkpoint: Path = ROOT / DEFAULT_D1_CHECKPOINT):
     engine = SimEngine()
+    d1 = D1Preview(d1_checkpoint, pack_meshes_binary, extract_robot_geoms, stairs_geometry)
+
+    async def dispatch(ws):
+        if urlparse(ws.request.path).path == "/d1-max/ws":
+            await d1.handle(ws)
+        else:
+            await handle_ws(ws, engine)
 
     def process_request(connection: ServerConnection, request):
         parsed = urlparse(request.path)
         path = parsed.path
-        if path == "/ws":
+        if path in ("/ws", "/d1-max/ws"):
             return None
         if path == "/":
             return make_http_response(200, "text/html; charset=utf-8", (WEB_DIR / "index.html").read_bytes())
@@ -712,6 +837,20 @@ async def run_server(host: str, port: int):
             return make_http_response(200, "text/css; charset=utf-8", (WEB_DIR / "style.css").read_bytes())
         if path == "/app.js":
             return make_http_response(200, "application/javascript; charset=utf-8", (WEB_DIR / "app.js").read_bytes())
+        if path in ("/d1-max", "/d1-max/"):
+            return Response(302, "Found", Headers({"Location": "/?robot=d1-max"}), b"")
+        if path == "/d1-max/metrics":
+            metrics = d1.training_metrics()
+            if metrics is None:
+                return make_http_response(404, "text/plain; charset=utf-8", b"D1 Max metrics are unavailable")
+            return make_http_response(200, "application/json; charset=utf-8", json.dumps(metrics).encode())
+        if path in ("/d1-max/init", "/d1-max/meshes.bin"):
+            if d1.resolve_checkpoint() is None:
+                return make_http_response(404, "text/plain; charset=utf-8", b"D1 Max checkpoint is unavailable")
+            d1.load()
+            if path.endswith(".bin"):
+                return make_http_response(200, "application/octet-stream", d1.meshes)
+            return make_http_response(200, "application/json; charset=utf-8", json.dumps(d1.metadata()).encode())
         if path == "/api/meshes.bin":
             return make_http_response(200, "application/octet-stream", engine.meshes_bin)
         if path == "/api/init":
@@ -723,6 +862,8 @@ async def run_server(host: str, port: int):
                 "default_q": DEFAULT_Q.tolist(),
                 "checkpoints": engine.checkpoints,
                 "current_checkpoint": engine.checkpoint_path,
+                "policy_info": engine.policy_info,
+                "control_config": {"turn_radius": engine.turn_radius, "inplace_yaw_rate": engine.inplace_yaw_rate},
                 "logs": scan_logs(),
                 "geoms": engine.robot_geoms,
                 "stairs": engine.stairs_meta,
@@ -736,18 +877,19 @@ async def run_server(host: str, port: int):
         return make_http_response(404, "text/plain; charset=utf-8", b"Not Found")
 
     torch.set_num_threads(2)
-    async with serve(lambda ws: handle_ws(ws, engine), host, port, process_request=process_request):
+    async with serve(dispatch, host, port, process_request=process_request):
         print(f"[WebLab] 服务已启动: http://{host}:{port}/  (本机可访问 http://127.0.0.1:{port}/)", flush=True)
         await sim_broadcast_loop(engine)
 
 
 def main():
-    ap = argparse.ArgumentParser(description="rl01 Unitree Go2 WebLab 控制台")
+    ap = argparse.ArgumentParser(description="rl01 WebLab 控制台")
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=8800)
+    ap.add_argument("--d1-checkpoint", type=Path, default=ROOT / DEFAULT_D1_CHECKPOINT)
     args = ap.parse_args()
     try:
-        asyncio.run(run_server(args.host, args.port))
+        asyncio.run(run_server(args.host, args.port, args.d1_checkpoint.resolve()))
     except KeyboardInterrupt:
         print("\n[WebLab] 已停止", flush=True)
 

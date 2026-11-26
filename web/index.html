@@ -3,18 +3,21 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>rl01 · Unitree Go2 WebLab</title>
+  <title>rl01 · WebLab</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <div id="app">
+  <div id="app" data-robot="d1-max">
     <!-- 顶部控制栏：3行按功能模块分组 -->
     <header class="topbar">
       <!-- 第一行：模型策略 · 仿真连接 · 状态指示 -->
       <div class="top-row">
         <div class="ctrl-group">
           <span class="brand-tag">考试台</span>
-          <span class="chip chip-muted">unitree_go2 (12 关节)</span>
+          <select class="ctrl-select-sm" id="robotSelect" aria-label="切换考试台模型">
+            <option value="d1-max" selected>D1 Max (16)</option>
+            <option value="go2">Unitree Go2 (12)</option>
+          </select>
           <select id="ckptSelect" class="ctrl-select" title="选择训练检查点 (.pt)"></select>
         </div>
 
@@ -102,6 +105,16 @@
             <button class="btn btn-xs" data-spush="right">右</button>
           </div>
         </div>
+        <div class="ctrl-group" data-d1>
+          <label class="inline-ctrl" for="d1PushDirection">组合冲击方向</label>
+          <select class="ctrl-select-sm" id="d1PushDirection">
+            <option value="0">+X</option><option value="45">+X +Y</option>
+            <option value="90">+Y</option><option value="135">−X +Y</option>
+            <option value="180">−X</option><option value="225">−X −Y</option>
+            <option value="270">−Y</option><option value="315">+X −Y</option>
+          </select>
+          <button class="btn btn-xs" id="d1Push">施加组合冲击</button>
+        </div>
       </div>
     </header>
 
@@ -114,7 +127,7 @@
             <canvas id="glCanvas"></canvas>
             <div id="labelsLayer" class="labels-layer"></div>
 
-            <div class="vp-hint">左键旋转 · 右键/Shift拖拽平移 · 滚轮缩放 · R 重置视角 · WASD/QE 遥控</div>
+            <div class="vp-hint">左键旋转 · 右键/Shift拖拽平移 · 滚轮缩放 · R 重置视角 · W/S 前后 · A/D 侧移 · Q/E 转向 · 空格停止</div>
 
             <div class="posture-bar">
               <button class="btn btn-xs" data-posture="lie">趴下</button>
@@ -190,27 +203,44 @@
               <button id="btnReset" class="btn btn-accent-soft quick-reset-btn" title="将机器人重置回初始站立位置">↺ 复位</button>
             </div>
 
+            <div class="dock-card dock-tap" data-d1>
+              <div class="card-title">点按转向</div>
+              <span class="mono">步进 2°</span>
+              <div class="top-row">
+                <button class="btn btn-xs" data-tap="1">左点按</button>
+                <button class="btn btn-xs" data-tap="-1">右点按</button>
+              </div>
+              <span class="mono" id="d1Lift">轮脚净空 —</span>
+            </div>
+
             <!-- 5. 控制区 (紧接在后面) -->
             <div class="dock-card dock-ctrl">
-              <div class="card-title">控制区</div>
+              <div class="card-title">机身坐标控制 <button id="btnStop" class="btn btn-xs" title="速度指令归零，保持 RL 运控；再次按方向键继续行走">停止</button></div>
               <div class="ctrl-body">
                 <div class="joy-wrap">
                   <div id="joyPad" class="joy-pad">
                     <div id="joyKnob" class="joy-knob"></div>
                   </div>
-                  <div class="dial-label">移动 ↑vx / ←vy</div>
+                  <div class="dial-label">W/S 前后 · A/D 左右</div>
                 </div>
                 <div class="yaw-wrap">
                   <div id="yawTrack" class="yaw-track">
                     <div id="yawKnob" class="yaw-knob"></div>
                   </div>
-                  <div class="dial-label">转向 ←左转 / 右转→</div>
+                  <div id="turnKeyHint" class="dial-label">转向 ←左转 / 右转→</div>
                   <div id="cmdReadout" class="dial-label mono">
                     <span id="cmdLin">vx 0.00 · vy 0.00</span><br />
                     <span id="cmdWz">wz 0.00</span>
                   </div>
                 </div>
               </div>
+              <div class="turn-settings">
+                <label class="inline-ctrl" title="移动转向时角速度随平移速度变化；半径越大转弯越缓">转弯半径 <input id="turnRadius" class="num-xs" type="number" min="0.25" max="5" step="0.1" value="1.0" /> m</label>
+                <label class="inline-ctrl" title="仅原地转向使用的角速度">原地 <input id="inplaceYawRate" class="num-xs" type="number" min="0.3" max="1.2" step="0.1" value="0.8" /> rad/s</label>
+              </div>
+              <div class="control-note">移动转向随速度匹配 · 原地角速单独设置</div>
+              <div id="headingStatus" class="control-note mono">等待策略状态</div>
+              <div id="policyCommandHint" class="control-note">机身坐标 · 支持组合方向 · 松键停止</div>
             </div>
 
             <!-- 6. 急停 (紧接控制区后面) -->
@@ -220,15 +250,15 @@
 
         <!-- Tab 2: 详细 -->
         <section id="tab-detail" class="tab-panel panel-pad">
-          <div class="panel-header">12 关节实时状态详表</div>
+          <div class="panel-header" id="detailTitle">12 关节实时状态详表</div>
           <table class="detail-table">
             <thead>
               <tr>
                 <th>#</th>
                 <th>关节名称</th>
                 <th>实际角 (rad)</th>
-                <th>目标角 (rad)</th>
-                <th>跟踪误差 (rad)</th>
+                <th id="detailTargetTitle">目标角 (rad)</th>
+                <th id="detailErrorTitle">跟踪误差 (rad)</th>
                 <th>角速度 (rad/s)</th>
                 <th>力矩 (N·m)</th>
                 <th>限位范围</th>
@@ -246,19 +276,19 @@
           </div>
           <div class="charts-grid">
             <div class="chart-card">
-              <div class="chart-title">回合回报 (ep_return)</div>
+              <div class="chart-title" id="chartReturnTitle">回合回报 (ep_return)</div>
               <canvas id="chartReturn" width="560" height="240"></canvas>
             </div>
             <div class="chart-card">
-              <div class="chart-title">线速度跟踪 & 存活率</div>
+              <div class="chart-title" id="chartTrackTitle">线速度跟踪 & 存活率</div>
               <canvas id="chartTrack" width="560" height="240"></canvas>
             </div>
             <div class="chart-card">
-              <div class="chart-title">实际 vx vs 指令 vx (m/s)</div>
+              <div class="chart-title" id="chartVelTitle">实际 vx vs 指令 vx (m/s)</div>
               <canvas id="chartVel" width="560" height="240"></canvas>
             </div>
             <div class="chart-card">
-              <div class="chart-title">摔倒次数 (falls)</div>
+              <div class="chart-title" id="chartFallsTitle">摔倒次数 (falls)</div>
               <canvas id="chartFalls" width="560" height="240"></canvas>
             </div>
           </div>
@@ -280,7 +310,7 @@
               <canvas id="scopeAtt" width="560" height="240"></canvas>
             </div>
             <div class="chart-card">
-              <div class="chart-title">选中关节 实际角 q vs 目标角 q_tgt (rad)</div>
+              <div class="chart-title" id="scopeJointTitle">选中关节 实际角 q vs 目标角 q_tgt (rad)</div>
               <canvas id="scopeJointQ" width="560" height="240"></canvas>
             </div>
             <div class="chart-card">
@@ -301,6 +331,6 @@
     </div>
   </div>
 
-  <script src="/app.js"></script>
+  <script src="/app.js" defer></script>
 </body>
 </html>

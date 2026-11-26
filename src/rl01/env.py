@@ -48,6 +48,7 @@ class EnvCfg:
     stair_speed_curriculum: bool = False  # True 时楼梯与平地统一使用连续速度课程 [0.2, stair_vmax[h]]
     stair_speed_ladder: bool = False  # True 时平地按 [0.3..2.0] 阶梯+连续斜坡采样，楼梯上限不超过 stair_vx_max
     cmd_slew_rate: float = 0.0  # >0 时指令 vx 连续斜坡变化速率 (m/s^2)
+    flat_cmd_step_prob: float = 0.0  # 平地混入阶跃输入，匹配网页释放/换向；其余用斜坡
     stair_top: float = STAIR_TOP  # 顶平台长度 (m)
     stair_top_steps: int = 25  # 顶平台持续步数（25=0.5s，100=2.0s）
     riser_clear_margin: float = 0.0  # >0 时爬梯阶段按前方台阶高度自动抬高摆动目标 (h_ahead - fground + margin)
@@ -58,6 +59,13 @@ class EnvCfg:
     stair_lateral_limit: float = 0.42  # centre must remain on 1.2 m wide simulated stair
     w_stair_y: float = 0.0  # 楼梯上机身世界 y 偏离的平方惩罚
     w_stair_yaw: float = 0.0  # 楼梯上机身航向偏离（相对 +x）的平方惩罚
+    stair_heading: bool = False  # 楼梯目标朝向为世界+x，平地仍随转向指令积分
+    stair_transition: bool = False  # 首末级逐脚连续过渡，不切换整机布尔奖励
+    stair_transition_distance: float = 0.35
+    stair_transition_time: float = 0.20  # 入口预备距离随速度增加
+    stair_stop_prob: float = 0.0  # 楼梯重采样时插入完整停止并强制再启动
+    riser_contact_clear: bool = False  # 首末级卡脚时不能因足端水平速度下降而免除抬脚约束
+    w_riser_stall: float = 0.0  # 有界的低位立面接触惩罚，仅移动中的首末级
     episode_s: float = 20.0
     # 速度指令
     vx_max: float = 2.0  # 最终的指令上限（m/s）
@@ -67,6 +75,32 @@ class EnvCfg:
     vmax_step: float = 0.25
     vy_range: float = 0.0  # 侧向指令范围，默认 0（只练前进）
     yaw_range: float = 0.0
+    reverse_max: float = 0.0  # 平地后退速度上限；0 保持旧前进采样
+    omni: bool = False
+    relative_tracking: bool = False  # 新方向按指令幅度收紧sigma，打破低速原地最优
+    heading_bound: float = 0.0  # >0时近零平方/远端有界，避免积分大误差截零
+    maneuver_gait: bool = False
+    gait_phase_obs: bool = False
+    gait_frequency: float = 1.0 / 0.44  # go2_v4 reference_trot: .04+.18+.04+.18
+    gait_frequency_speed: float = 0.0
+    turn_radius_range: tuple = (0.8, 2.0)
+    turn_step_height: float = 0.04  # 在脚中心静止高度之上抬4cm
+    maneuver_height_target: float = 0.30
+    maneuver_height_floor: float = 0.28
+    w_maneuver_gait: float = 0.0
+    w_maneuver_height: float = 0.0
+    w_maneuver_pose: float = 0.0
+    w_maneuver_slide: float = 0.0
+    w_maneuver_trajectory: float = 0.0
+    turn_focus: bool = False  # 专项课程，增加转弯与原地踏步样本
+    direction_init: float = 0.2  # 新方向幅度课程，前进上限不降级
+    heading_obs: bool = False  # 在原45维后追加 wrap(target_yaw-yaw)*0.5
+    w_heading: float = 0.0
+    w_track_heading: float = 0.0
+    heading_sigma: float = 0.005  # positive heading score makes small persistent yaw bias costly
+    w_cross_vel: float = 0.0  # 沿平移指令法向的速度误差，适用于任意方向
+    w_stop_vel: float = 0.0
+    w_stop_ang: float = 0.0
     stand_prob: float = 0.1  # 这部分环境的指令为 0（站立）
     cmd_resample_s: float = 5.0
     # 随机干扰与域随机化
@@ -81,6 +115,8 @@ class EnvCfg:
     damping_range: tuple = (1.0, 1.0)  # 关节阻尼缩放范围
     com_range: float = 0.0  # 机身质心 x/y 偏移范围 (m)
     noise: bool = True  # 观测噪声
+    robustness_curriculum: bool = False
+    robustness_init: float = 0.35
     # 终止
     min_height: float = 0.15
     min_cos_tilt: float = 0.5  # 倾角超过 60° 终止
@@ -108,6 +144,8 @@ class EnvCfg:
     low_speed_full: float = 0.8  # vx <= 这个值时低速项权重 100%
     low_speed_end: float = 1.0  # vx >= 这个值时低速项权重 0
     w_foot_cap: float = -300.0  # 摆动脚高过 (目标 + cap_margin) 的平方惩罚权重
+    flat_foot_cap: float | None = None  # 平地全速上界，None保留旧的仅低速上界
+    flat_clear_speed_gain: float = 1.0  # 平地1.2m/s以上净空惩罚增益，.8到1.2平滑增加
     cap_margin: float = 0.012
     w_orient_low: float = 0.0  # 额外的 orientation 权重（叠加在 w_orientation 上，乘低速权重）
     w_ang_vel_low: float = 0.0  # 额外的 ang_vel_xy 权重
@@ -118,6 +156,57 @@ class EnvCfg:
 
     def as_dict(self):
         return asdict(self)
+
+
+def gait_frequency(cmd, cfg):
+    speed = np.maximum(np.linalg.norm(cmd[:, :2], axis=1), 0.3 * np.abs(cmd[:, 2]))
+    return cfg.gait_frequency + cfg.gait_frequency_speed * speed
+
+
+def gait_phase_features(phase, cmd):
+    active = np.linalg.norm(cmd, axis=1) >= 0.1
+    return np.stack([np.sin(phase), np.cos(phase)], axis=1) * active[:, None]
+
+
+def maneuver_lift_height(cmd, cfg):
+    """Moving lift follows the existing speed schedule; in-place uses its own lift.
+
+    The 5mm offset retains the schedule's slope while ensuring low-speed turning
+    has visible clearance above the 22mm resting foot-centre height.
+    """
+    speed = np.linalg.norm(cmd[:, :2], axis=1)
+    speed_target = np.interp(speed, [0.3,0.5,0.8,1.0], [0.03,0.04,0.055,cfg.foot_clear_target])
+    lift = np.maximum(0.02, speed_target - 0.005)
+    return np.where(speed > 0.1, lift, cfg.turn_step_height)
+
+
+def maneuver_foot_targets(phase, cmd, nominal, cfg):
+    """CHAMP-reference diagonal phases and per-foot planar translation+yaw geometry.
+
+    One cycle: .04 all stance / .18 FL+RR swing / .04 all stance /
+    .18 FR+RL swing. The swing arc has zero endpoint vertical velocity.
+    Returns mixed coordinates: xy in body frame, z as ground-relative foot-centre
+    height, plus the scheduled swing mask. No world/body z subtraction is used.
+    """
+    period = 1.0 / gait_frequency(cmd, cfg)
+    cycle = (phase / (2 * np.pi)) % 1.0
+    start = np.array([0.04/0.44, 0.26/0.44, 0.26/0.44, 0.04/0.44])
+    duration = 0.18 / 0.44
+    local = (cycle[:, None] - start[None, :]) % 1.0
+    swing = local < duration
+    u = np.clip(local / duration, 0.0, 1.0)
+    stance_u = np.clip((local - duration) / (1.0 - duration), 0.0, 1.0)
+    velocity = np.empty((len(cmd), 4, 2))
+    velocity[:, :, 0] = cmd[:, 0, None] - cmd[:, 2, None] * nominal[None, :, 1]
+    velocity[:, :, 1] = cmd[:, 1, None] + cmd[:, 2, None] * nominal[None, :, 0]
+    half_step = velocity * (period * (1.0-duration) / 2.0)[:, None, None]
+    progression = np.where(swing, 2*u-1, 1-2*stance_u)
+    target = np.broadcast_to(nominal, (len(cmd), 4, 3)).copy()
+    target[:, :, :2] += half_step * progression[:, :, None]
+    # CHAMP's 4cm is a low-speed turning reference, never a global height cap.
+    lift_height = maneuver_lift_height(cmd, cfg)
+    target[:, :, 2] = 0.022 + lift_height[:, None] * np.where(swing, 16*u*u*(1-u)*(1-u), 0.0)
+    return target, swing
 
 
 def build_train_model(visual=False, kp=KP, kd=KD, fast=True, stair_stage=None, stair_top=STAIR_TOP):
@@ -191,6 +280,11 @@ class Go2Env:
         if noise is not None:
             self.cfg.noise = noise
         self.N = num_envs
+        if self.cfg.gait_phase_obs and not self.cfg.heading_obs:
+            raise ValueError('gait_phase_obs requires heading_obs (48D contract)')
+        self.n_obs = N_OBS + int(self.cfg.heading_obs) + 2*int(self.cfg.gait_phase_obs)
+        self.direction_scale = self.cfg.direction_init
+        self.direction_scales = np.full(3, self.cfg.direction_init)
         self.rng = np.random.default_rng(seed)
         self.dt = 0.002 * DECIMATION
         self.max_steps = int(self.cfg.episode_s / self.dt)
@@ -198,7 +292,7 @@ class Go2Env:
 
         self.stage = 0
         self.env_stage = np.zeros(num_envs, dtype=np.int32)
-        self.is_flat = np.zeros(num_envs, dtype=bool)
+        self.is_flat = np.full(num_envs, not self.cfg.stairs, dtype=bool)
         if self.cfg.stairs and self.cfg.flat_frac > 0:
             self.is_flat[:round(num_envs * self.cfg.flat_frac)] = True
         self.stage_models = [build_train_model(stair_stage=i, stair_top=self.cfg.stair_top) for i in range(len(STAIR_STAGES))] if self.cfg.stairs else []
@@ -216,6 +310,13 @@ class Go2Env:
         self.base_kd = -base.actuator_biasprm[:, 2].copy()
         self.base_damping = base.dof_damping[6:].copy()
         self.foot_friction0 = base.geom_friction[self.foot_gid[0]].copy()
+        nominal_data = mujoco.MjData(base)
+        nominal_data.qpos[:3] = [0.0, 0.0, self.cfg.maneuver_height_target]
+        nominal_data.qpos[3:7] = [1.0, 0.0, 0.0, 0.0]
+        nominal_data.qpos[7:] = DEFAULT_Q
+        mujoco.mj_forward(base, nominal_data)
+        self.nominal_feet = nominal_data.sensordata[:12].reshape(4, 3).copy()
+        self.nominal_feet[:, 2] = -self.cfg.maneuver_height_target + 0.022
 
         self.state = np.zeros((num_envs, NSTATE))
         self.state_buf = np.zeros((num_envs, DECIMATION, NSTATE))
@@ -224,6 +325,10 @@ class Go2Env:
         self.cmd = np.zeros((num_envs, 3))
         self.cmd_target = np.zeros((num_envs, 3))
         self.cmd_left = np.zeros(num_envs, dtype=np.int64)
+        self.cmd_age = np.zeros(num_envs, dtype=np.int64)
+        self.heading_target = np.zeros(num_envs)
+        self.heading_error = np.zeros(num_envs)
+        self.gait_phase = np.zeros(num_envs)
         self.last_action = np.zeros((num_envs, N_ACT))
         self.last_dq = np.zeros((num_envs, N_ACT))
         self.air_time = np.zeros((num_envs, 4))
@@ -240,13 +345,14 @@ class Go2Env:
         self.ep_track = np.zeros(num_envs)
         self.push_delta = np.zeros((num_envs, 2))
         self.vmax = self.cfg.init_vmax
+        self.robustness_scale = self.cfg.robustness_init if self.cfg.robustness_curriculum else 1.0
         self.stair_vmax = np.full(3, min(self.cfg.stair_init_vmax, self.cfg.stair_vx_max), dtype=np.float64)  # 5 / 10 / 15 cm 各自的速度课程上限
         self.obs_taps = tuple(self.cfg.obs_taps)
         self.hist_len = max(self.obs_taps) + 1
-        self.obs_hist = np.zeros((num_envs, self.hist_len, N_OBS), dtype=np.float32)
+        self.obs_hist = np.zeros((num_envs, self.hist_len, self.n_obs), dtype=np.float32)
         self._just_reset = np.ones(num_envs, dtype=bool)
         # 噪声（已乘观测缩放）
-        nz = np.zeros(N_OBS)
+        nz = np.zeros(self.n_obs)
         nz[0:3], nz[3:6], nz[9:21], nz[21:33] = 0.2 * 0.25, 0.05, 0.01, 1.5 * 0.05
         self.noise_vec = nz
         self._reset_stats()
@@ -260,6 +366,48 @@ class Go2Env:
                           stair_success=0, stair_done=0, stair_current_success=0, stair_current_done=0, front_land=0, rear_land=0,
                           stair_y_abs_sum=0.0, stair_steps=0,
                           stair_h_success=[0, 0, 0], stair_h_done=[0, 0, 0], stair_h_err_sum=[0.0, 0.0, 0.0], stair_h_n_mov=[0, 0, 0])
+        self.stats.update(direction_err=[0.0, 0.0, 0.0], direction_n=[0, 0, 0],
+                          direction_signed_err=[0.0]*5, direction_signed_n=[0]*5,
+                          direction_gate_err=[0.0]*5, direction_gate_n=[0]*5,
+                          direction_done=[0]*5, direction_falls=[0]*5,
+                          reverse_height=0.0, reverse_n=0, turn_height=0.0, turn_n=0,
+                          turn_lift=0, turn_drag=0.0, gait_score=0.0, gait_n=0,
+                          straight_n=0, straight_heading_abs=0.0, cross_vel_abs=0.0, track_heading=0.0,
+                          heading_abs=0.0, stop_speed=0.0, stop_n=0)
+
+    def direction_masks(self, cmd):
+        return (cmd[:, 0] < -0.1, cmd[:, 1] > 0.1, cmd[:, 1] < -0.1,
+                cmd[:, 2] > 0.1, cmd[:, 2] < -0.1)
+
+    def update_direction_curriculum(self, recent):
+        """解锁新方向而保留原前进全速；必须每种新方向实走跟得上且存活。"""
+        if not self.cfg.omni or np.all(self.direction_scales >= 1.0):
+            return False
+        lengths = [v for s in recent for v in s['flat_ep_len' if self.cfg.stairs else 'ep_len']]
+        counts = np.sum([s['direction_n'] for s in recent], axis=0)
+        signed_counts = np.sum([s['direction_gate_n'] for s in recent], axis=0)
+        signed_errors = np.sum([s['direction_gate_err'] for s in recent], axis=0)
+        completed = np.sum([s['direction_done'] for s in recent], axis=0)
+        falls = np.sum([s['direction_falls'] for s in recent], axis=0)
+        if len(lengths) < 64:
+            return False
+        max_steps = self.flat_max_steps if self.cfg.stairs else self.max_steps
+        if np.mean(np.asarray(lengths) >= max_steps - 1) <= 0.85:
+            return False
+        changed = False
+        for axis, groups in enumerate(([0], [1,2], [3,4])):
+            groups = np.asarray(groups)
+            if self.direction_scales[axis] >= 1:
+                continue
+            if counts[axis] < 2000:
+                continue
+            if np.any(signed_counts[groups] < 1000) or np.any(completed[groups] < 16):
+                continue
+            if np.all(signed_errors[groups]/signed_counts[groups] < 0.45) and np.all(falls[groups]/completed[groups] < 0.15):
+                self.direction_scales[axis] = min(1.0, round(self.direction_scales[axis]+0.2,2))
+                changed = True
+        self.direction_scale = float(self.direction_scales.min())
+        return changed
 
     def pop_stats(self):
         s, self.stats = self.stats, None
@@ -316,6 +464,11 @@ class Go2Env:
         s[:, S_Q] = DEFAULT_Q + rng.uniform(-0.1, 0.1, (n, 12))
         s[:, 20:22] = rng.uniform(-0.2, 0.2, (n, 2))
         self.state[idx] = s
+        self.heading_target[idx] = yaw
+        if cfg.stair_heading:
+            self.heading_target[idx[~flat_m]] = 0.0
+        self.heading_error[idx] = self.heading_target[idx] - yaw
+        self.gait_phase[idx] = 0.0
         # 域随机化：脚摩擦、机身质量、PD 增益、关节阻尼、质心偏移
         fr = rng.uniform(*cfg.friction_range, n)
         dm = rng.uniform(*cfg.mass_range, n)
@@ -323,6 +476,17 @@ class Go2Env:
         kd_s = rng.uniform(*cfg.kd_range, (n, 12)) if cfg.kd_range != (1.0, 1.0) else None
         damp_s = rng.uniform(*cfg.damping_range, (n, 12)) if cfg.damping_range != (1.0, 1.0) else None
         dcom = rng.uniform(-cfg.com_range, cfg.com_range, (n, 2)) if cfg.com_range > 0 else None
+        strength = self.robustness_scale
+        fr = self.foot_friction0[0] + strength * (fr - self.foot_friction0[0])
+        dm *= strength
+        if kp_s is not None:
+            kp_s = 1.0 + strength * (kp_s - 1.0)
+        if kd_s is not None:
+            kd_s = 1.0 + strength * (kd_s - 1.0)
+        if damp_s is not None:
+            damp_s = 1.0 + strength * (damp_s - 1.0)
+        if dcom is not None:
+            dcom *= strength
         for k, i in enumerate(idx):
             if cfg.stairs:
                 self.models[i] = copy.copy(self.flat_model if self.is_flat[i] else self.stage_models[self.env_stage[i]])
@@ -358,6 +522,60 @@ class Go2Env:
 
     def _resample_cmd(self, idx, snap=False):
         n, rng, cfg = len(idx), self.rng, self.cfg
+        if n == 0:
+            return
+        if cfg.omni and cfg.stairs and self.is_flat[idx].any() and not self.is_flat[idx].all():
+            self._resample_cmd(idx[self.is_flat[idx]], snap=snap)
+            self._resample_cmd(idx[~self.is_flat[idx]], snap=snap)
+            return
+        self.cmd_age[idx] = 0
+        if cfg.omni and (not cfg.stairs or self.is_flat[idx].all()):
+            if not snap:
+                for g, mask in enumerate(self.direction_masks(self.cmd[idx])):
+                    self.stats['direction_done'][g] += int(mask.sum())
+            # 35% 前进回放防遗忘，其余后退/侧移/斜行/原地转向/弧线。
+            probabilities = [0.20, 0.15, 0.15, 0.10, 0.20, 0.20] if cfg.turn_focus else [0.35, 0.15, 0.15, 0.15, 0.10, 0.10]
+            mode = rng.choice(6, n, p=probabilities)
+            reverse_scale, side_scale, yaw_scale = self.direction_scales
+            target = np.zeros((n, 3))
+            sign = rng.choice([-1.0, 1.0], n)
+            target[:, 0] = rng.uniform(0.25, max(0.25, self.vmax), n)
+            if cfg.turn_focus:
+                # Preserve established fast forward gait during maneuver specialization.
+                fast_replay = (mode == 0) & (rng.random(n) < 0.5)
+                target[fast_replay,0] = np.minimum(rng.choice([1.0,1.5,2.0],fast_replay.sum()),self.vmax)
+            rev = mode == 1
+            target[rev, 0] = -rng.uniform(0.15, max(0.15, cfg.reverse_max * reverse_scale), rev.sum())
+            side = mode == 2
+            target[side, 0] = 0.0
+            target[side, 1] = sign[side] * rng.uniform(0.15, max(0.15, cfg.vy_range * side_scale), side.sum())
+            diag = mode == 3
+            target[diag, 0] = rng.choice([-1.0, 1.0], diag.sum()) * rng.uniform(0.15, max(0.15, min(0.8, cfg.reverse_max) * reverse_scale), diag.sum())
+            target[diag, 1] = sign[diag] * rng.uniform(0.15, max(0.15, cfg.vy_range * side_scale), diag.sum())
+            turn = mode == 4
+            target[turn, :2] = 0.0
+            curve = (mode == 5) | turn
+            target[curve, 2] = sign[curve] * rng.uniform(0.15, max(0.15, cfg.yaw_range * yaw_scale), curve.sum())
+            if cfg.maneuver_gait:
+                arc = mode == 5
+                radius = rng.uniform(*cfg.turn_radius_range, n)
+                target[arc, 2] = sign[arc] * np.minimum(np.linalg.norm(target[arc, :2], axis=1) / radius[arc], cfg.yaw_range * yaw_scale)
+            # 每个非首次重采样都强制一部分运动环境停；停过的下一段必定重新走。
+            was_moving = np.linalg.norm(self.cmd_target[idx], axis=1) > 0.1
+            stop = (rng.random(n) < cfg.stand_prob) & (was_moving | snap)
+            target[stop] = 0.0  # 三轴一起归零，不能只清 vx
+            self.cmd_target[idx] = target
+            if snap or cfg.cmd_slew_rate <= 0:
+                self.cmd[idx] = target
+            elif cfg.flat_cmd_step_prob > 0:
+                step_cmd = rng.random(n) < cfg.flat_cmd_step_prob
+                self.cmd[idx[step_cmd]] = target[step_cmd]
+            dwell = rng.uniform(0.5 * cfg.cmd_resample_s, cfg.cmd_resample_s, n)
+            dwell[stop] = rng.uniform(1.0, 2.5, stop.sum())
+            if cfg.cmd_slew_rate > 0:
+                dwell[stop] += np.max(np.abs(self.cmd[idx[stop]]), axis=1) / cfg.cmd_slew_rate
+            self.cmd_left[idx] = np.maximum(1, (dwell / self.dt).astype(int))
+            return
         flat_m = self.is_flat[idx]
         if cfg.stairs and cfg.stair_speed_curriculum:
             h_idx = self.env_stage[idx] % 3
@@ -394,12 +612,22 @@ class Go2Env:
         elif not cfg.stairs:
             vx[rng.random(n) < cfg.stand_prob] = 0.0
         self.cmd_target[idx, 0] = vx
-        self.cmd_target[idx, 1] = rng.uniform(-cfg.vy_range, cfg.vy_range, n)
-        self.cmd_target[idx, 2] = rng.uniform(-cfg.yaw_range, cfg.yaw_range, n)
+        self.cmd_target[idx, 1] = rng.uniform(-cfg.vy_range, cfg.vy_range, n) * flat_m
+        self.cmd_target[idx, 2] = rng.uniform(-cfg.yaw_range, cfg.yaw_range, n) * flat_m
+        stop = np.zeros(n, dtype=bool)
+        if cfg.stairs and cfg.stair_stop_prob > 0:
+            was_moving = np.linalg.norm(self.cmd[idx], axis=1) > 0.1
+            stop = (~flat_m) & (rng.random(n) < cfg.stair_stop_prob) & (was_moving | snap)
+            self.cmd_target[idx[stop]] = 0.0
         if snap or cfg.cmd_slew_rate <= 0:
             self.cmd[idx] = self.cmd_target[idx]
         steps = int(cfg.cmd_resample_s / self.dt)
         self.cmd_left[idx] = rng.integers(steps // 2, steps + 1, n)
+        if stop.any():
+            dwell = rng.uniform(1.0, 2.5, stop.sum())
+            if cfg.cmd_slew_rate > 0:
+                dwell += np.max(np.abs(self.cmd[idx[stop]]), axis=1) / cfg.cmd_slew_rate
+            self.cmd_left[idx[stop]] = np.maximum(1, (dwell / self.dt).astype(int))
 
     # ---------- 观测 ----------
     def _unpack(self):
@@ -417,6 +645,12 @@ class Go2Env:
         obs = np.concatenate([self.ang_b * 0.25, self.g_b, self.cmd * scale, self.q - DEFAULT_Q,
                               self.dq * 0.05, self.last_action], axis=1)
         self.critic_extra = np.concatenate([self.lin_b * 2.0, self.state[:, S_Z : S_Z + 1], self.push_delta], axis=1)
+        yaw = np.arctan2(self.R[:, 1, 0], self.R[:, 0, 0])
+        self.heading_error = np.arctan2(np.sin(self.heading_target - yaw), np.cos(self.heading_target - yaw))
+        if self.cfg.heading_obs:
+            obs = np.concatenate([obs, self.heading_error[:, None] * 0.5], axis=1)
+        if self.cfg.gait_phase_obs:
+            obs = np.concatenate([obs, gait_phase_features(self.gait_phase, self.cmd)], axis=1)
         if self.cfg.stairs:
             dx = np.repeat(np.array([-0.3, 0.0, 0.3, 0.6, 0.9]), 3)
             dy = np.tile(np.array([-0.25, 0.0, 0.25]), 5)
@@ -495,8 +729,15 @@ class Go2Env:
     # ---------- 一步 ----------
     def step(self, action):
         cfg, dt, N = self.cfg, self.dt, self.N
+        self.cmd_age += 1
         action = np.clip(action, -10.0, 10.0)
         target = DEFAULT_Q + ACTION_SCALE * action
+        self.heading_target = (self.heading_target + self.cmd[:, 2] * dt + np.pi) % (2 * np.pi) - np.pi
+        if cfg.stairs and cfg.stair_heading:
+            self.heading_target[~self.is_flat] = 0.0
+        if cfg.gait_phase_obs:
+            active = np.linalg.norm(self.cmd, axis=1) >= 0.1
+            self.gait_phase[active] = (self.gait_phase[active] + 2*np.pi*gait_frequency(self.cmd, cfg)[active]*dt) % (2*np.pi)
 
         # 随机推力：360° 全方向水平速度冲击 + 可选垂向与三轴角速度冲击
         self.push_delta[:] = 0
@@ -504,7 +745,7 @@ class Go2Env:
             m = self.rng.random(N) < dt / cfg.push_interval_s
             if cfg.push_vel > 0:
                 ang = self.rng.uniform(-np.pi, np.pi, N)
-                mag = self.rng.uniform(0.3 * cfg.push_vel, cfg.push_vel, N)
+                mag = self.rng.uniform(0.3 * cfg.push_vel, cfg.push_vel, N) * self.robustness_scale
                 dx = mag * np.cos(ang)
                 dy = mag * np.sin(ang)
                 self.state[m, 20] += dx[m]
@@ -512,9 +753,9 @@ class Go2Env:
                 self.push_delta[m, 0] = dx[m]
                 self.push_delta[m, 1] = dy[m]
             if cfg.push_z > 0:
-                self.state[m, 22] += self.rng.uniform(-cfg.push_z, cfg.push_z, N)[m]
+                self.state[m, 22] += self.rng.uniform(-cfg.push_z, cfg.push_z, N)[m] * self.robustness_scale
             if cfg.push_ang > 0:
-                self.state[m, 23:26] += self.rng.uniform(-cfg.push_ang, cfg.push_ang, (N, 3))[m]
+                self.state[m, 23:26] += self.rng.uniform(-cfg.push_ang, cfg.push_ang, (N, 3))[m] * self.robustness_scale
 
         self.roller.rollout(self.models, self.datas, self.state, target[:, None, :], nstep=DECIMATION,
                             state=self.state_buf, sensordata=self.sens_buf)
@@ -543,15 +784,22 @@ class Go2Env:
         lin_err = np.sum((self.cmd[:, :2] - self.lin_b[:, :2]) ** 2, 1)
         ang_err = (self.cmd[:, 2] - self.ang_b[:, 2]) ** 2
         sigma_lin = np.where(self.is_flat, 0.25, cfg.track_sigma) if (cfg.stairs and cfg.flat_frac > 0) else cfg.track_sigma
+        sigma_ang = cfg.ang_sigma
+        if cfg.relative_tracking:
+            nonforward = (self.cmd[:, 0] < -0.1) | (np.abs(self.cmd[:, 1]) > 0.1)
+            sigma_lin = np.where(nonforward, np.clip(0.5 * np.sum(self.cmd[:, :2] ** 2, 1), 0.02, cfg.track_sigma), sigma_lin)
+            sigma_ang = np.where(np.abs(self.cmd[:, 2]) > 0.1, np.clip(0.5 * self.cmd[:, 2] ** 2, 0.02, cfg.ang_sigma), sigma_ang)
         track_lin = np.exp(-lin_err / sigma_lin)
-        track_ang = np.exp(-ang_err / cfg.ang_sigma)
+        track_ang = np.exp(-ang_err / sigma_ang)
         tau = np.clip(KP * (target - self.q) - KD * self.dq, -TORQUE_LIMIT, TORQUE_LIMIT)
         contact = sens[:, 24:28] > 0.1 if cfg.stairs else foot_z < 0.03
         landing_reward = self.stair_landing_reward(fw, contact) if cfg.stairs else np.zeros(N)
         contact_f = contact | self.last_contact
         first = (self.air_time > 0.0) & contact_f
         self.air_time += dt
-        moving = np.linalg.norm(self.cmd[:, :2], axis=1) > 0.1
+        planar_speed = np.linalg.norm(self.cmd[:, :2], axis=1)
+        gait_speed = np.maximum(planar_speed, 0.3 * np.abs(self.cmd[:, 2]))
+        moving = gait_speed > 0.1
         feet_air = np.sum((self.air_time - cfg.air_time_target) * first, 1) * moving
         self.air_time *= ~contact_f
         self.last_contact = contact
@@ -559,6 +807,14 @@ class Go2Env:
         hip_idx = [0, 3, 6, 9]
         foot_w = sens[:, :12].reshape(N, 4, 3)
         foot_b = np.einsum("nji,nkj->nki", self.R, foot_w - self.state[:, None, 1:4])  # 足端在机身系下的位置
+        maneuver = cfg.maneuver_gait & self.is_flat & ((self.cmd[:, 0] < -0.1) | (np.abs(self.cmd[:, 1]) > 0.1) | (np.abs(self.cmd[:, 2]) > 0.1))
+        gait_target, gait_swing = maneuver_foot_targets(self.gait_phase, self.cmd, self.nominal_feet, cfg)
+        gait_z_error = (foot_z - gait_target[:, :, 2]) / 0.025
+        lift_shortfall = np.clip((gait_target[:,:,2]-foot_z-0.004) / maneuver_lift_height(self.cmd,cfg)[:,None], 0, 1)
+        gait_score = (np.exp(-gait_z_error**2)-2*lift_shortfall).mean(1) * maneuver
+        # Compare horizontal offsets in the body frame; z remains world clearance.
+        trajectory_error = np.sum((foot_b[:, :, :2] - gait_target[:, :, :2])**2, axis=2)
+        trajectory_score = np.exp(-trajectory_error / 0.0025).mean(1) * maneuver
         out_y = LEG_SIDE * foot_b[:, :, 1] - THIGH_Y  # 正 = 比大腿关节更靠外（外八）
         foot_speed = np.linalg.norm(foot_w[:, :, :2] - self.prev_foot[:, :, :2], axis=-1) / dt * self.prev_valid[:, None]
         self.prev_foot = foot_w.copy()  # 必须 copy：foot_w 来自 sens_buf 的视图，下一步会被覆盖
@@ -576,38 +832,107 @@ class Go2Env:
             use_walk_gait = self.is_flat | on_top_walk | on_approach_walk
         else:
             use_walk_gait = np.ones(N, dtype=bool)
+        # Old checkpoints keep the historical binary rewards. New runs blend
+        # per-foot clearance/cap and whole-body posture continuously. This is
+        # privileged reward shaping, not terrain perception given to the actor.
+        foot_walk_weight = np.broadcast_to(use_walk_gait[:, None], (N, 4)).astype(float).copy()
+        walk_weight = use_walk_gait.astype(float)
+        if cfg.stairs and cfg.stair_transition:
+            prepare = cfg.stair_transition_distance + cfg.stair_transition_time * planar_speed
+            smooth = lambda u: np.clip(u, 0.0, 1.0)**2 * (3.0 - 2.0*np.clip(u, 0.0, 1.0))
+            entry = smooth((fw[:, :, 0] - (STAIR_X0 - prepare[:, None])) / prepare[:, None])
+            exit_x = smooth((fw[:, :, 0] - edge_s[:, None] - 0.06) / prepare[:, None])
+            exit_z = smooth((fw[:, :, 2] - (ns_s*hs_s - 0.08)[:, None]) / 0.08)
+            climb_weight = entry * (1.0 - exit_x*exit_z) * (~self.is_flat[:, None])
+            foot_walk_weight = 1.0 - climb_weight
+            # Rear feet must finish their own exit before strong flat-body
+            # constraints return; max of continuous weights remains continuous.
+            walk_weight = 1.0 - climb_weight.max(axis=1)
+        self.foot_walk_weight = foot_walk_weight.copy()
+        self.walk_weight = walk_weight.copy()
 
         clear_pen = np.maximum(cfg.foot_clear_target - foot_z, 0.0) ** 2 * np.tanh(2.0 * foot_speed)
-        low_w = np.clip((cfg.low_speed_end - self.cmd[:, 0]) / (cfg.low_speed_end - cfg.low_speed_full), 0.0, 1.0) if cfg.speed_clear else np.zeros(N)
+        low_w = np.clip((cfg.low_speed_end - gait_speed) / (cfg.low_speed_end - cfg.low_speed_full), 0.0, 1.0) if cfg.speed_clear else np.zeros(N)
         if cfg.speed_clear:  # 目标高度随指令速度：0.3 以下 3 cm，0.5 → 4 cm，0.8 → 5.5 cm，1.0 以上 7 cm（线性插值）
-            flat_tgt = np.interp(self.cmd[:, 0], [0.3, 0.5, 0.8, 1.0], [0.03, 0.04, 0.055, cfg.foot_clear_target])[:, None]
-            flat_tgt = np.where(self.cmd[:, 0:1] >= 1.0, cfg.foot_clear_target, flat_tgt)
+            flat_tgt = np.interp(gait_speed, [0.3, 0.5, 0.8, 1.0], [0.03, 0.04, 0.055, cfg.foot_clear_target])[:, None]
+            flat_tgt = np.where(gait_speed[:, None] >= 1.0, cfg.foot_clear_target, flat_tgt)
         else:
             flat_tgt = np.full((N, 1), cfg.foot_clear_target)
         if cfg.stairs and cfg.riser_clear_margin > 0:
             h_ahead = np.maximum(self.terrain_height(fw[:, :, 0] + 0.04, fw[:, :, 1]),
                                  self.terrain_height(fw[:, :, 0] + 0.16, fw[:, :, 1]))
-            climb_tgt = np.maximum(cfg.foot_clear_target, h_ahead - fground + cfg.riser_clear_margin)
-            tgt = np.where(use_walk_gait[:, None], flat_tgt, climb_tgt)
+            if cfg.stair_transition:
+                # Smooth the preview height too: smoothing only the gait mask
+                # would leave a hard jump when a look-ahead point hits a riser.
+                risers = STAIR_X0 + np.arange(STAIR_MAX_STEPS)*STAIR_TREAD
+                ahead_x = fw[:, :, 0] + 0.5*prepare[:, None]
+                ramp = smooth((ahead_x[:, :, None] - risers[None, None, :] + 0.06)/0.12)
+                active_risers = np.arange(STAIR_MAX_STEPS)[None, :] < ns_s[:, None]
+                h_ahead = hs_s[:, None] * np.sum(ramp*active_risers[:, None, :], axis=2)
+            rise = h_ahead - fground
+            if cfg.stair_transition:
+                # Look-ahead can cross two narrow treads at 1m/s. It must not
+                # turn a 15cm first step into a ~30cm foot-clearance request.
+                rise = np.minimum(rise, hs_s[:, None])
+            climb_tgt = np.maximum(cfg.foot_clear_target, rise + cfg.riser_clear_margin)
+            tgt = foot_walk_weight*flat_tgt + (1.0-foot_walk_weight)*climb_tgt
         else:
             tgt = flat_tgt
+        if cfg.maneuver_gait:
+            tgt = np.where(maneuver[:, None], np.maximum(tgt, 0.022 + maneuver_lift_height(self.cmd,cfg)[:,None]), tgt)
+        self.clearance_target = tgt.copy()
+        riser_stall = np.zeros((N, 4), dtype=bool)
+        riser_deficit = np.zeros((N, 4))
+        if cfg.stairs and cfg.riser_contact_clear:
+            edges = np.stack((np.full(N, STAIR_X0), edge_s), axis=1)
+            tops = np.stack((hs_s, ns_s*hs_s), axis=1)
+            bottoms = tops - hs_s[:, None]
+            # Touch is measured, but the vertical-face association is a
+            # conservative geometric proxy, not collision-pair identification.
+            hit = (np.abs(fw[:, :, 0, None]-edges[:, None, :]) < 0.035)
+            hit &= (fw[:, :, 2, None] > bottoms[:, None, :]+0.035)
+            hit &= (fw[:, :, 2, None] < tops[:, None, :]+0.012)
+            hit &= contact[:, :, None] & (~self.is_flat[:, None, None]) & moving[:, None, None]
+            riser_stall = hit.any(axis=2)
+            need = np.clip((tops[:, None, :]+0.022+cfg.riser_clear_margin-fw[:, :, 2, None]) /
+                           (hs_s[:, None, None]+0.022+cfg.riser_clear_margin), 0.0, 1.0)
+            riser_deficit = np.max(need**2*hit, axis=2)
         if cfg.speed_clear or (cfg.stairs and cfg.riser_clear_margin > 0):
-            clear_scale = np.where(use_walk_gait[:, None] & cfg.speed_clear, (cfg.foot_clear_target / np.maximum(tgt, 1e-3)) ** 2, 1.0)
-            clear_pen = np.maximum(tgt - foot_z, 0.0) ** 2 * np.tanh(2.0 * foot_speed) * clear_scale
+            clear_scale = 1.0 + foot_walk_weight * int(cfg.speed_clear) * ((cfg.foot_clear_target / np.maximum(tgt, 1e-3)) ** 2 - 1.0)
+            motion_gate = np.maximum(np.tanh(2.0*foot_speed), riser_stall.astype(float))
+            clear_pen = np.maximum(tgt - foot_z, 0.0) ** 2 * motion_gate * clear_scale
+            fast_gain = 1.0 + (cfg.flat_clear_speed_gain-1.0)*np.clip((gait_speed-0.8)/0.4, 0.0, 1.0)
+            clear_pen *= np.where(self.is_flat, fast_gain, 1.0)[:, None]
         if cfg.speed_clear:
             excess = np.maximum(foot_z - (tgt + cfg.cap_margin), 0.0)
             d_hub = 0.04  # Huber 阈值：超过目标+余量 4cm 后线性惩罚，避免大高抬时总奖励归零而失去梯度
             cap_pen = np.where(excess <= d_hub, excess ** 2, d_hub * (2.0 * excess - d_hub)) * np.tanh(2.0 * foot_speed)
         else:
             cap_pen = np.zeros_like(clear_pen)
-        walk_low_w = low_w * use_walk_gait
+        walk_low_w = low_w * walk_weight
         diagonal = ((contact[:, 0] & contact[:, 3] & ~contact[:, 1] & ~contact[:, 2]) |
                     (contact[:, 1] & contact[:, 2] & ~contact[:, 0] & ~contact[:, 3])) if cfg.stairs else np.zeros(N, dtype=bool)
-        diagonal *= (~use_walk_gait) & (self.lin_b[:, 0] > 0.08)  # 只在爬梯段奖励对角支撑，平地/平台保持 walk 步态
+        diagonal_weight = diagonal.astype(float) * (1.0-walk_weight) * (self.lin_b[:, 0] > 0.08)
         stair_only = (~self.is_flat) if cfg.stairs else np.zeros(N, dtype=bool)
+        cap_weight = np.full(N, cfg.w_foot_cap) * low_w
+        if cfg.flat_foot_cap is not None:
+            cap_weight = np.where(self.is_flat, cfg.flat_foot_cap, cap_weight)
         heading_err = np.arctan2(self.R[:, 1, 0], self.R[:, 0, 0])
+        hold_error = np.arctan2(np.sin(self.heading_target - heading_err), np.cos(self.heading_target - heading_err))
+        cross_vel = (self.cmd[:, 0] * self.lin_b[:, 1] - self.cmd[:, 1] * self.lin_b[:, 0]) / np.maximum(planar_speed, 0.1)
         terms = dict(
-            diagonal=cfg.w_diagonal * diagonal,
+            track_heading=cfg.w_track_heading * np.exp(-hold_error**2/cfg.heading_sigma),
+            riser_stall=cfg.w_riser_stall * riser_deficit.mean(axis=1),
+            maneuver_gait=cfg.w_maneuver_gait * gait_score,
+            maneuver_trajectory=cfg.w_maneuver_trajectory * trajectory_score,
+            maneuver_height=cfg.w_maneuver_height * ((self.state[:, S_Z]-cfg.maneuver_height_target)**2 + 3*np.maximum(cfg.maneuver_height_floor-self.state[:, S_Z], 0)**2) * maneuver,
+            maneuver_pose=cfg.w_maneuver_pose * np.mean(np.sum((self.q.reshape(N,4,3)[:,:,1:]-DEFAULT_Q.reshape(4,3)[None,:,1:])**2, axis=2) * ~gait_swing, axis=1) * maneuver,
+            maneuver_slide=cfg.w_maneuver_slide * np.mean((foot_speed**2 / (0.15**2 + foot_speed**2)) * ~gait_swing * (foot_z < 0.04), axis=1) * maneuver,
+            heading=cfg.w_heading * hold_error ** 2 / (1.0 + (hold_error / cfg.heading_bound) ** 2) if cfg.heading_bound > 0 else cfg.w_heading * hold_error ** 2,
+            cross_vel=cfg.w_cross_vel * cross_vel ** 2 * (planar_speed > 0.1),
+            stop_vel=cfg.w_stop_vel * np.sum(self.lin_b[:, :2] ** 2, 1) * standing,
+            stop_ang=cfg.w_stop_ang * self.ang_b[:, 2] ** 2 * standing,
+            diagonal=cfg.w_diagonal * diagonal_weight,
             stair_landing=landing_reward / dt,
             stair_y=cfg.w_stair_y * (self.state[:, 2] ** 2) * stair_only,
             stair_yaw=cfg.w_stair_yaw * (heading_err ** 2) * stair_only,
@@ -621,12 +946,12 @@ class Go2Env:
             action_rate=cfg.w_action_rate * np.sum((action - self.last_action) ** 2, 1),
             feet_air=cfg.w_feet_air * feet_air,
             collision=cfg.w_collision * np.sum(knee_z < 0.035, 1),
-            stand_still=cfg.w_stand_still * np.sum(np.abs(self.q - DEFAULT_Q), 1) * standing,
+            stand_still=cfg.w_stand_still * np.sum(np.abs(self.q - DEFAULT_Q), 1) * standing * (np.where(self.is_flat, 1.0, 0.1) if cfg.stair_transition else 1.0),
             hip=cfg.w_hip * np.sum((self.q[:, hip_idx] - DEFAULT_Q[hip_idx]) ** 2, 1),
             base_height=cfg.w_base_height * (self.state[:, S_Z] - (body_ground if cfg.stairs else 0.0) - cfg.base_height_target) ** 2,
             foot_width=cfg.w_foot_width * np.mean(out_y ** 2, 1),
             foot_clear=cfg.w_foot_clear * np.mean(clear_pen, 1),
-            foot_cap=cfg.w_foot_cap * np.mean(cap_pen, 1) * walk_low_w,
+            foot_cap=cap_weight * np.mean(cap_pen * foot_walk_weight, 1),
         )
         rew = sum(terms.values()) * dt
         self.term_means = {k: float(v.mean() * dt) for k, v in terms.items()}  # 调试：每项每步的平均贡献
@@ -658,16 +983,51 @@ class Go2Env:
         st["swing_n"] += int(swing.sum())
         st["foot_out_sum"] += float(out_y.mean(1).sum())
         st["foot_abs_sum"] += float(np.abs(out_y).mean(1).sum())
-        mv = self.cmd[:, 0] > 0.25  # 只看"被要求移动"的环境（含 0.3 m/s 档）：相对速度误差 |cmd-vx|/cmd，站着不动 = 1
-        st["rel_err_sum"] += float((np.abs(self.cmd[mv, 0] - self.lin_b[mv, 0]) / self.cmd[mv, 0]).sum())
+        mv = planar_speed > 0.25
+        planar_rel = np.sqrt(lin_err) / np.maximum(planar_speed, 0.15)
+        st["rel_err_sum"] += float(planar_rel[mv].sum())
         st["n_mov"] += int(mv.sum())
         mv_f = mv & self.is_flat
         if mv_f.any():
-            st["flat_rel_err_sum"] += float((np.abs(self.cmd[mv_f, 0] - self.lin_b[mv_f, 0]) / self.cmd[mv_f, 0]).sum())
+            st["flat_rel_err_sum"] += float(planar_rel[mv_f].sum())
             st["flat_n_mov"] += int(mv_f.sum())
         st["tilt2"] += float(np.sum(self.g_b[:, :2] ** 2))
         st["rate2"] += float(np.sum(self.ang_b[:, :2] ** 2))
-        lo = (self.cmd[:, 0] > 0.1) & (self.cmd[:, 0] < 0.8)  # 低速（要求移动）环境的摆动脚高度
+        st['heading_abs'] += float(np.abs(hold_error).sum())
+        straight = (planar_speed > 0.1) & (np.abs(self.cmd[:,2]) < 0.05)
+        st['straight_n'] += int(straight.sum())
+        st['straight_heading_abs'] += float(np.abs(hold_error[straight]).sum())
+        st['cross_vel_abs'] += float(np.abs(cross_vel[straight]).sum())
+        st['track_heading'] += float(np.exp(-hold_error**2/cfg.heading_sigma).sum())
+        st['stop_speed'] += float(np.linalg.norm(self.lin_b[standing, :2], axis=1).sum())
+        st['stop_n'] += int(standing.sum())
+        for g, mask in enumerate((self.cmd[:, 0] < -0.1, np.abs(self.cmd[:, 1]) > 0.1, np.abs(self.cmd[:, 2]) > 0.1)):
+            mask = mask & self.is_flat
+            error = np.sqrt(ang_err) / np.maximum(np.abs(self.cmd[:, 2]), 0.15) if g == 2 else planar_rel
+            st['direction_err'][g] += float(error[mask].sum())
+            st['direction_n'][g] += int(mask.sum())
+        for g, mask in enumerate(self.direction_masks(self.cmd)):
+            mask = mask & self.is_flat
+            error = np.sqrt(ang_err) / np.maximum(np.abs(self.cmd[:, 2]), 0.15) if g >= 3 else planar_rel
+            st['direction_signed_err'][g] += float(error[mask].sum())
+            st['direction_signed_n'][g] += int(mask.sum())
+            # 奖励和日志包含换向瞬态；课程能力门控用0.5s后的稳定段。
+            gate = mask & (self.cmd_age * dt >= 0.5)
+            st['direction_gate_err'][g] += float(error[gate].sum())
+            st['direction_gate_n'][g] += int(gate.sum())
+            st['direction_done'][g] += int((done & mask).sum())
+            st['direction_falls'][g] += int((fall & mask).sum())
+        reverse = self.cmd[:,0] < -0.1
+        turning = np.abs(self.cmd[:,2]) > 0.1
+        st['reverse_height'] += float(self.state[reverse,S_Z].sum())
+        st['reverse_n'] += int(reverse.sum())
+        st['turn_height'] += float(self.state[turning,S_Z].sum())
+        st['turn_n'] += int(turning.sum())
+        st['turn_lift'] += int((foot_z[turning] > 0.035).any(axis=1).sum())
+        st['turn_drag'] += float(np.mean((foot_speed[turning]**2/(0.15**2+foot_speed[turning]**2)) * ~gait_swing[turning] * (foot_z[turning]<0.04),axis=1).sum())
+        st['gait_score'] += float(gait_score.sum())
+        st['gait_n'] += int(maneuver.sum())
+        lo = (gait_speed > 0.1) & (gait_speed < 0.8)
         lsw = swing & lo[:, None]
         st["lo_swing_z"] += float(foot_z[lsw].sum())
         st["lo_swing_n"] += int(lsw.sum())
@@ -714,6 +1074,6 @@ class Go2Env:
         if cfg.cmd_slew_rate > 0:
             cont = ~done
             max_d = cfg.cmd_slew_rate * dt
-            self.cmd[cont, 0] += np.clip(self.cmd_target[cont, 0] - self.cmd[cont, 0], -max_d, max_d)
+            self.cmd[cont] += np.clip(self.cmd_target[cont] - self.cmd[cont], -max_d, max_d)
         self._compute_obs(shift=True)
         return rew, done, timeout

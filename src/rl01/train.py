@@ -13,6 +13,8 @@
 import argparse
 import csv
 import json
+import signal
+import shutil
 import time
 from collections import deque
 from datetime import datetime
@@ -24,14 +26,66 @@ import torch
 from rl01.env import N_ACT, N_CRITIC_EXTRA, N_OBS, EnvCfg, Go2Env, STAIR_SCAN, STAIR_STAGES
 from rl01.ppo import PPO, ActorCritic
 from rl01.symmetry import mirror_action, mirror_obs
+from rl01.teacher import FlatTeacher, remap_initial_state
 
 RUNS = Path(__file__).resolve().parents[2] / "runs"
-FIELDS = ["iteration", "time_s", "fps", "reward_step", "ep_return", "ep_len", "track_lin", "track_ang", "vx", "cmd_vx",
+FIELDS = ["straight_heading_deg", "cross_vel_mps", "heading_tracking", "reverse_scale", "lateral_scale", "yaw_scale", "reverse_height_cm", "turn_height_cm", "turn_lift_fraction", "turn_drag", "gait_score", "direction_scale", "heading_deg", "stop_speed", "reverse_err", "lateral_err", "yaw_err", "iteration", "time_s", "fps", "reward_step", "ep_return", "ep_len", "track_lin", "track_ang", "vx", "cmd_vx",
           "falls", "timeouts", "vmax", "surrogate", "value", "kl", "lr", "std", "foot_out_mm", "foot_abs_mm", "swing_z_cm", "sym", "tilt_deg", "rate_xy", "lo_swing_cm", "stage", "stair_success", "stair_done", "front_land", "rear_land", "stair_y_cm"]
+
+
+FIELDS += ['teacher_loss', 'robustness_scale']
 
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument('--omni', action='store_true', help='全方向+明确停走重启采样')
+    ap.add_argument('--flat-teacher', default=None, help='仅训练期指导平地动作的冻结策略检查点')
+    ap.add_argument('--flat-teacher-coef', type=float, default=0.0)
+    ap.add_argument('--stair-heading', action='store_true')
+    ap.add_argument('--stair-transition', action='store_true')
+    ap.add_argument('--stair-transition-distance', type=float, default=0.35)
+    ap.add_argument('--stair-transition-time', type=float, default=0.20)
+    ap.add_argument('--stair-stop-prob', type=float, default=0.0)
+    ap.add_argument('--riser-contact-clear', action='store_true')
+    ap.add_argument('--w-riser-stall', type=float, default=0.0)
+    ap.add_argument('--flat-cmd-step-prob', type=float, default=0.0)
+    ap.add_argument('--flat-foot-cap', type=float, default=None)
+    ap.add_argument('--flat-clear-speed-gain', type=float, default=1.0)
+    ap.add_argument('--robustness-curriculum', action='store_true')
+    ap.add_argument('--robustness-init', type=float, default=0.35)
+    ap.add_argument('--heading-obs', action='store_true', help='追加1维航向误差，45->46维')
+    ap.add_argument('--relative-tracking', action='store_true')
+    ap.add_argument('--heading-bound', type=float, default=0.0)
+    ap.add_argument('--maneuver-gait', action='store_true')
+    ap.add_argument('--gait-phase-obs', action='store_true')
+    ap.add_argument('--gait-frequency', type=float, default=1/0.44)
+    ap.add_argument('--gait-frequency-speed', type=float, default=0.0)
+    ap.add_argument('--turn-radius-range', type=float, nargs=2, default=[0.8,2.0])
+    ap.add_argument('--turn-step-height', type=float, default=0.04)
+    ap.add_argument('--turn-focus', action='store_true')
+    ap.add_argument('--maneuver-height-target', type=float, default=0.30)
+    ap.add_argument('--maneuver-height-floor', type=float, default=0.28)
+    ap.add_argument('--w-maneuver-gait', type=float, default=0.0)
+    ap.add_argument('--w-maneuver-trajectory', type=float, default=0.0)
+    ap.add_argument('--w-maneuver-height', type=float, default=0.0)
+    ap.add_argument('--w-maneuver-pose', type=float, default=0.0)
+    ap.add_argument('--w-maneuver-slide', type=float, default=0.0)
+    ap.add_argument('--init-std', type=float, default=None, help='微调时显式重设探索std')
+    ap.add_argument('--reverse-max', type=float, default=1.0)
+    ap.add_argument('--vy-range', type=float, default=0.8)
+    ap.add_argument('--yaw-range', type=float, default=1.0)
+    ap.add_argument('--direction-init', type=float, default=0.2)
+    ap.add_argument('--stand-prob', type=float, default=0.1)
+    ap.add_argument('--w-heading', type=float, default=0.0)
+    ap.add_argument('--w-track-heading', type=float, default=0.0)
+    ap.add_argument('--heading-sigma', type=float, default=0.005)
+    ap.add_argument('--w-cross-vel', type=float, default=0.0)
+    ap.add_argument('--w-stop-vel', type=float, default=0.0)
+    ap.add_argument('--w-stop-ang', type=float, default=0.0)
+    ap.add_argument('--nthread', type=int, default=8)
+    ap.add_argument('--torch-threads', type=int, default=2)
+    ap.add_argument('--device', choices=['auto', 'cpu', 'cuda'], default='auto')
+    ap.add_argument('--max-seconds', type=float, default=3600, help='段落截止时间，到期完整保存')
     ap.add_argument("--w-diagonal", type=float, default=0.0)
     ap.add_argument("--stair-front-bonus", type=float, default=0.0)
     ap.add_argument("--stair-rear-bonus", type=float, default=0.0)
@@ -91,16 +145,56 @@ def main():
     ap.add_argument("--push", type=float, default=0.6, help="随机推力的最大速度冲击 m/s，0 关闭")
     ap.add_argument("--no-noise", action="store_true")
     args = ap.parse_args()
+    if args.resume:
+        original_args = json.loads((Path(args.resume).parent / 'config.json').read_text())['args']
+        for key in ('sym_coef', 'entropy_coef', 'flat_teacher', 'flat_teacher_coef'):
+            if key in original_args:
+                setattr(args, key, original_args[key])
+    if args.omni and args.stairs and args.flat_frac <= 0:
+        ap.error('--omni 与 --stairs 同用时须有 --flat-frac > 0；全方向只用于平地环境')
+    if args.flat_teacher_coef < 0 or (args.flat_teacher_coef > 0 and not args.flat_teacher):
+        ap.error('--flat-teacher-coef 须非负，启用时须提供 --flat-teacher')
+    if args.flat_teacher_coef > 0 and args.stairs and args.flat_frac <= 0:
+        ap.error('平地教师需要平地训练环境')
+    if not 0 < args.direction_init <= 1 or not 0 <= args.stand_prob < 1:
+        ap.error('direction-init 须在 (0,1]，stand-prob 须在 [0,1)')
+    torch.set_num_threads(args.torch_threads)
+    stop_requested = False
+    def request_stop(signum, frame):
+        nonlocal stop_requested
+        stop_requested = True
+        print(f'收到信号 {signum}，将在本轮更新后保存并退出', flush=True)
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
 
     total = args.iterations
     log_every = args.log_every or max(1, round(total * 0.025))
     save_every = args.save_every or max(1, round(total * 0.10))
     torch.manual_seed(args.seed)
-    dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dev = torch.device(('cuda' if torch.cuda.is_available() else 'cpu') if args.device == 'auto' else args.device)
 
     obs_taps = tuple(args.obs_taps)
     assert obs_taps[0] == 0, "obs_taps 首项必须为 0（当前帧）"
     cfg = EnvCfg(
+        stair_heading=args.stair_heading, stair_transition=args.stair_transition,
+        stair_transition_distance=args.stair_transition_distance, stair_transition_time=args.stair_transition_time,
+        stair_stop_prob=args.stair_stop_prob, robustness_curriculum=args.robustness_curriculum,
+        riser_contact_clear=args.riser_contact_clear, w_riser_stall=args.w_riser_stall,
+        flat_cmd_step_prob=args.flat_cmd_step_prob, flat_foot_cap=args.flat_foot_cap,
+        flat_clear_speed_gain=args.flat_clear_speed_gain,
+        robustness_init=args.robustness_init,
+        omni=args.omni, heading_obs=args.heading_obs, reverse_max=args.reverse_max if args.omni else 0.0,
+        relative_tracking=args.relative_tracking, heading_bound=args.heading_bound,
+        maneuver_gait=args.maneuver_gait, gait_phase_obs=args.gait_phase_obs,
+        gait_frequency=args.gait_frequency, gait_frequency_speed=args.gait_frequency_speed,
+        turn_radius_range=tuple(args.turn_radius_range), turn_step_height=args.turn_step_height, turn_focus=args.turn_focus,
+        maneuver_height_target=args.maneuver_height_target, maneuver_height_floor=args.maneuver_height_floor,
+        w_maneuver_gait=args.w_maneuver_gait, w_maneuver_trajectory=args.w_maneuver_trajectory,
+        w_maneuver_height=args.w_maneuver_height, w_maneuver_pose=args.w_maneuver_pose, w_maneuver_slide=args.w_maneuver_slide,
+        vy_range=args.vy_range if args.omni else 0.0, yaw_range=args.yaw_range if args.omni else 0.0,
+        direction_init=args.direction_init, stand_prob=args.stand_prob,
+        w_heading=args.w_heading, w_cross_vel=args.w_cross_vel, w_stop_vel=args.w_stop_vel, w_stop_ang=args.w_stop_ang,
+        w_track_heading=args.w_track_heading, heading_sigma=args.heading_sigma,
         w_diagonal=args.w_diagonal, stair_front_bonus=args.stair_front_bonus, stair_rear_bonus=args.stair_rear_bonus,
         track_sigma=args.track_sigma, ang_sigma=args.ang_sigma, stairs=args.stairs, flat_frac=args.flat_frac, stair_mix_prev=args.stair_mix_prev,
         stair_all_stages=args.stair_all_stages, stair_speed_curriculum=args.stair_speed_curriculum,
@@ -127,29 +221,32 @@ def main():
     for a_, f_ in (("w_foot_cap", "w_foot_cap"), ("cap_margin", "cap_margin"), ("w_orient_low", "w_orient_low"), ("w_ang_vel_low", "w_ang_vel_low")):
         if getattr(args, a_) is not None:
             setattr(cfg, f_, getattr(args, a_))
-    env = Go2Env(args.num_envs, cfg, seed=args.seed)
-    actor_dim = N_OBS * len(cfg.obs_taps)
-    critic_dim = N_OBS + N_CRITIC_EXTRA + (STAIR_SCAN if args.stairs else 0)
+    env = Go2Env(args.num_envs, cfg, seed=args.seed, nthread=args.nthread)
+    actor_dim = env.n_obs * len(cfg.obs_taps)
+    critic_dim = env.n_obs + N_CRITIC_EXTRA + (STAIR_SCAN if args.stairs else 0)
     ac = ActorCritic(actor_dim, critic_dim, N_ACT).to(dev)
-    ppo = PPO(ac, lr=args.lr, entropy_coef=args.entropy_coef, mirror=(mirror_obs, mirror_action) if args.sym_coef > 0 else None, sym_coef=args.sym_coef)
+    ppo = PPO(ac, lr=args.lr, entropy_coef=args.entropy_coef, mirror=(lambda o: mirror_obs(o, env.n_obs), mirror_action) if args.sym_coef > 0 else None, sym_coef=args.sym_coef,
+              flat_teacher_coef=args.flat_teacher_coef)
+    teacher = FlatTeacher(args.flat_teacher, cfg.as_dict(), actor_dim, dev) if args.flat_teacher_coef > 0 else None
 
     start = 0
     if args.init_from:
         ck0 = torch.load(args.init_from, map_location=dev)
-        state = dict(ck0["model"])
-        for key in ("actor.0.weight", "critic.0.weight"):
-            old = state[key]
-            cur = ac.state_dict()[key]
-            if old.shape[1] != cur.shape[1]:
-                expanded = cur.clone().zero_()
-                n_copy = min(old.shape[1], cur.shape[1])
-                expanded[:, :n_copy] = old[:, :n_copy]
-                state[key] = expanded
+        state = remap_initial_state(ck0, ac.state_dict(), cfg.as_dict())
         ac.load_state_dict(state)
         if args.cap_init_std is not None:
             with torch.no_grad():
                 ac.std.clamp_(max=args.cap_init_std)
+        if args.init_std is not None:
+            with torch.no_grad():
+                ac.std.fill_(args.init_std)
         env.vmax = max(min(ck0["vmax"], cfg.vx_max), cfg.init_vmax)
+        if args.stairs and ck0.get('stair_vmax') is not None:
+            env.stair_vmax = np.clip(np.array(ck0['stair_vmax'], dtype=float), cfg.stair_init_vmax, cfg.stair_vx_max)
+        if cfg.omni:
+            old_scales = ck0.get('direction_scales',[ck0.get('direction_scale',cfg.direction_init)]*3)
+            env.direction_scales = np.maximum(np.minimum(np.array(old_scales,dtype=float),1.0),cfg.direction_init)
+            env.direction_scale = float(env.direction_scales.min())
         env._resample_cmd(np.arange(env.N), snap=True)
         env._compute_obs(shift=False)
         print(f"从 {args.init_from} 载入网络权重（微调，迭代从 0 开始）")
@@ -158,6 +255,13 @@ def main():
         ac.load_state_dict(ck["model"])
         ppo.opt.load_state_dict(ck["optimizer"])
         ppo.lr, env.vmax, start = ck["lr"], ck["vmax"], ck["iteration"]
+        env.robustness_scale = ck.get('robustness_scale', cfg.robustness_init if cfg.robustness_curriculum else 1.0)
+        for group in ppo.opt.param_groups:
+            group['lr'] = ppo.lr
+        env.direction_scale = ck.get('direction_scale', cfg.direction_init)
+        env.direction_scales = np.array(ck.get('direction_scales',[env.direction_scale]*3),dtype=float)
+        env._resample_cmd(np.arange(env.N), snap=True)
+        env._compute_obs(shift=False)
         if args.stairs:
             env.stage = ck["stair_stage"]
             if "stair_vmax" in ck and ck["stair_vmax"] is not None:
@@ -170,18 +274,28 @@ def main():
         run_dir.mkdir(parents=True, exist_ok=False)
     config_path = run_dir / "config.json"
     if args.resume:
-        old_cfg = json.loads(config_path.read_text())["env"]
+        saved_config = json.loads(config_path.read_text())
+        old_cfg = json.loads(json.dumps(EnvCfg(**saved_config['env']).as_dict()))
         if old_cfg != json.loads(json.dumps(cfg.as_dict())):
             raise ValueError("恢复配置与原运行不同，拒绝覆盖；请使用原参数")
+        saved_config.setdefault('resume_history', []).append({'checkpoint': args.resume, 'iterations': total})
+        saved_config['args']['iterations'] = total
+        config_path.write_text(json.dumps(saved_config, indent=2, ensure_ascii=False))
     else:
         config_path.write_text(json.dumps({"args": vars(args), "env": cfg.as_dict()}, indent=2, ensure_ascii=False))
+    source_dir = run_dir / ('source' if not args.resume else f'source_resume_{start}')
+    source_dir.mkdir(exist_ok=True)
+    for filename in ('env.py', 'train.py', 'train_maneuver.py', 'train_stairs_omni.py', 'ppo.py', 'symmetry.py', 'teacher.py'):
+        source_path = Path(__file__).with_name(filename)
+        if source_path.exists():
+            shutil.copy2(source_path, source_dir / filename)
     csv_path = run_dir / "metrics.csv"
     if args.resume and csv_path.exists():
         with csv_path.open(newline="") as f:
             rows = list(csv.DictReader(f))
         with csv_path.open("w", newline="") as f:
             w = csv.DictWriter(f, fieldnames=FIELDS); w.writeheader()
-            w.writerows(r for r in rows if int(r["iteration"]) <= start)
+            w.writerows({k:r.get(k,'nan') for k in FIELDS} for r in rows if int(r["iteration"]) <= start)
     new_csv = not csv_path.exists()
     csv_file = open(csv_path, "a", newline="")
     writer = csv.DictWriter(csv_file, fieldnames=FIELDS)
@@ -196,9 +310,13 @@ def main():
     z = lambda *s: torch.zeros(T, N, *s, device=dev)
     st = dict(obs=z(actor_dim), cobs=z(critic_dim), act=z(N_ACT), logp=z(), val=z(), rew=z(), done=z(),
               mu=z(N_ACT), sigma=z(N_ACT))
+    if teacher is not None:
+        st['teacher_target'], st['teacher_mask'] = z(N_ACT), z()
     recent = deque(maxlen=40)  # 课程判断用：只看最近 40 个迭代（不能累计到升级为止，否则早期的差表现一直拖着平均值）
+    direction_recent = deque(maxlen=80)
     flat_recent = deque(maxlen=40)
     stair_h_recent = [deque(maxlen=40) for _ in range(3)]
+    robustness_recent = deque(maxlen=80)
     pending = []  # 两次输出之间的逐迭代指标，输出时取平均
     t_start = time.time()
     env.pop_stats()
@@ -208,6 +326,9 @@ def main():
         o, co = env.get_obs()
         for t in range(T):
             ot, cot = torch.as_tensor(o, device=dev), torch.as_tensor(co, device=dev)
+            if teacher is not None:
+                teacher_target, teacher_mask = teacher.targets(ot, env.is_flat)
+                st['teacher_target'][t], st['teacher_mask'][t] = teacher_target, teacher_mask
             a, logp, val, mu, sig = ac.act(ot, cot)
             rew, done, timeout = env.step(a.cpu().numpy())
             rew_t = torch.as_tensor(rew, dtype=torch.float32, device=dev)
@@ -224,8 +345,24 @@ def main():
         loss = ppo.update(st, last_val)
 
         s = env.pop_stats()
+        robustness_recent.append(s)
+        if cfg.robustness_curriculum and env.robustness_scale < 1 and len(robustness_recent) == robustness_recent.maxlen:
+            rdone = sum(r['stair_done'] for r in robustness_recent)
+            rsuccess = sum(r['stair_success'] for r in robustness_recent)
+            rflat = [length for r in robustness_recent for length in r['flat_ep_len']]
+            rsteps = sum(r['steps'] for r in robustness_recent)
+            rtracking = sum(r['track_lin'] for r in robustness_recent) / max(1, rsteps)
+            if (rdone >= 64 and rsuccess / rdone >= 0.65 and len(rflat) >= 32
+                    and np.mean(np.asarray(rflat) >= env.flat_max_steps * 0.85) > 0.90 and rtracking > 0.75):
+                env.robustness_scale = min(1.0, round(env.robustness_scale + 0.15, 2))
+                print(f'域随机化/多方向冲击课程升级: scale={env.robustness_scale:.2f}，楼梯成功 {rsuccess}/{rdone}，平地稳定且跟踪 {rtracking:.3f}', flush=True)
+                robustness_recent.clear()
         n = max(s["steps"], 1)
         recent.append(s)
+        direction_recent.append(s)
+        if len(direction_recent) == direction_recent.maxlen and env.update_direction_curriculum(direction_recent):
+            print(f'全方向课程升级: 后退/侧移/转向 {env.direction_scales.tolist()}，各方向稳定段误差<0.45且存活>85%', flush=True)
+            direction_recent.clear()
         flat_recent.append(s)
         for g in range(3):
             stair_h_recent[g].append(s)
@@ -261,6 +398,19 @@ def main():
         elif len(recent) == recent.maxlen and env.update_curriculum(win):
             recent.clear()  # 升级后重新积累，用新的指令范围重新判断
         row = dict(
+            teacher_loss=loss['teacher_loss'], robustness_scale=env.robustness_scale,
+            straight_heading_deg=float(np.degrees(s['straight_heading_abs']/max(1,s['straight_n']))),
+            cross_vel_mps=s['cross_vel_abs']/max(1,s['straight_n']), heading_tracking=s['track_heading']/n,
+            reverse_scale=env.direction_scales[0], lateral_scale=env.direction_scales[1], yaw_scale=env.direction_scales[2],
+            reverse_height_cm=100*s['reverse_height']/max(1,s['reverse_n']),
+            turn_height_cm=100*s['turn_height']/max(1,s['turn_n']),
+            turn_lift_fraction=s['turn_lift']/max(1,s['turn_n']),
+            turn_drag=s['turn_drag']/max(1,s['turn_n']), gait_score=s['gait_score']/max(1,s['gait_n']),
+            direction_scale=env.direction_scale, heading_deg=float(np.degrees(s['heading_abs'] / n)),
+            stop_speed=s['stop_speed'] / max(1, s['stop_n']),
+            reverse_err=s['direction_err'][0] / max(1, s['direction_n'][0]),
+            lateral_err=s['direction_err'][1] / max(1, s['direction_n'][1]),
+            yaw_err=s['direction_err'][2] / max(1, s['direction_n'][2]),
             stage=env.stage if args.stairs else -1, stair_success=s["stair_success"], stair_done=s["stair_done"], front_land=s["front_land"], rear_land=s["rear_land"],
             iteration=it + 1, time_s=round(time.time() - t_start, 1), fps=round(T * N / (time.time() - t0)),
             reward_step=step_rew_sum / T, ep_return=float(np.mean(s["ep_return"])) if s["ep_return"] else float("nan"),
@@ -279,13 +429,16 @@ def main():
         pending.append(row)
 
         done_it = it + 1
+        ending = stop_requested or time.time() - t_start >= args.max_seconds or done_it == total
         saved = None
-        if done_it % save_every == 0 or done_it == total:
+        if done_it % save_every == 0 or ending:
             saved = run_dir / f"model_{done_it}.pt"
             torch.save(dict(model=ac.state_dict(), optimizer=ppo.opt.state_dict(), iteration=done_it, vmax=env.vmax,
                             lr=ppo.lr, env_cfg=cfg.as_dict(), stair_stage=env.stage if args.stairs else None,
-                            stair_vmax=env.stair_vmax.tolist() if args.stairs else None), saved)
-        if done_it % log_every == 0 or done_it == total:
+                            stair_vmax=env.stair_vmax.tolist() if args.stairs else None,
+                            direction_scale=env.direction_scale, direction_scales=env.direction_scales.tolist(),
+                            robustness_scale=env.robustness_scale), saved)
+        if done_it % log_every == 0 or ending:
             avg = lambda k: float(np.nanmean([r[k] for r in pending])) if not all(np.isnan(r[k]) for r in pending) else float("nan")
             stair_label = "全阶段 5/10/15cm" if cfg.stair_all_stages else f"{STAIR_STAGES[env.stage][0]*100:.0f} cm / {STAIR_STAGES[env.stage][1]} 级"
             sv_label = f"；梯速上限 [{env.stair_vmax[0]:.2f}, {env.stair_vmax[1]:.2f}, {env.stair_vmax[2]:.2f}]" if cfg.stair_speed_curriculum else ""
@@ -297,11 +450,20 @@ def main():
                   f"    价值损失 {avg('value'):.4f}  策略损失 {avg('surrogate'):+.4f}  KL {avg('kl'):.4f}  学习率 {row['lr']:.2e}  动作标准差 {row['std']:.3f}\n"
                   f"    足端外偏 {avg('foot_out_mm'):+.1f} mm（绝对值 {avg('foot_abs_mm'):.1f}）  对称损失 {avg('sym'):.4f}  摆动脚离地 {avg('swing_z_cm'):.1f} cm（<0.8 m/s：{avg('lo_swing_cm'):.1f} cm）\n"
                   f"    晃动：倾角 RMS（横滚+俯仰合成）{avg('tilt_deg'):.2f}°  横滚/俯仰角速度 RMS（合成）{avg('rate_xy'):.3f} rad/s"
+                  + (f"\n    后退/侧移/转向幅度 {env.direction_scales.tolist()}  航向误差 {avg('heading_deg'):.2f}°  停止速度 {avg('stop_speed'):.3f} m/s  后退/侧移/转向相对误差 {avg('reverse_err'):.2f}/{avg('lateral_err'):.2f}/{avg('yaw_err'):.2f}" if args.omni else '')
+                  + (f"\n    专项姿态 后退高度 {avg('reverse_height_cm'):.1f} cm / 转向高度 {avg('turn_height_cm'):.1f} cm  转向抬脚占比 {avg('turn_lift_fraction'):.2f} / 拖脚指标 {avg('turn_drag'):.2f} / 相位分 {avg('gait_score'):.2f}" if cfg.maneuver_gait else '')
+                  + (f"\n    直行航向误差 {avg('straight_heading_deg'):.2f}° / 横向速度误差 {avg('cross_vel_mps'):.3f} m/s / 航向跟踪分 {avg('heading_tracking'):.3f}" if cfg.w_track_heading else '')
+                  + (f"\n    平地教师动作 MSE {avg('teacher_loss'):.4f}（系数 {args.flat_teacher_coef:.3f}）" if teacher is not None else '')
+                  + (f"\n    域随机化/多方向冲击强度 {env.robustness_scale:.2f}/1.00" if cfg.robustness_curriculum else '')
                   + (f"\n    楼梯 {stair_label}{sv_label}；本段成功 {sum(r['stair_success'] for r in pending)}/{sum(r['stair_done'] for r in pending)}；横向 |y| 均值 {avg('stair_y_cm'):.1f} cm；落脚前腿 {sum(r['front_land'] for r in pending)} 后腿 {sum(r['rear_land'] for r in pending)}" if args.stairs else "")
                   + (f"\n    已保存 {saved.name}" if saved else ""), flush=True)
             pending = []
+        if ending:
+            break
     csv_file.close()
-    print(f"训练完成，用时 {(time.time() - t_start) / 60:.1f} 分。曲线：uv run python src/rl01/plot.py {run_dir}")
+    env.roller.close()
+    status = '本段保存退出' if done_it < total else '训练完成'
+    print(f"{status}，迭代 {done_it}/{total}，用时 {(time.time() - t_start) / 60:.1f} 分。曲线：uv run python src/rl01/plot.py {run_dir}", flush=True)
 
 
 if __name__ == "__main__":

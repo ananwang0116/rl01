@@ -62,6 +62,14 @@ Know which concurrency model is in play before touching it. In this project ther
 - An event is evidence to read, not to relay. Look at the numbers (survival, falls, tracking, speed vs command), compare with the previous report, and say whether the trend is healthy. A line that says "progress" can hide a failing run: in this project the first run looked busy while episode length had collapsed to about 19 steps.
 - A system notification is not the user speaking. Do not treat it as approval, confirmation or an answer to a pending question.
 
+**Training milestones.** Before launch, configure and smoke-test the cadence for every training stage. Measure progress from that stage's start. Use the iteration fraction for iteration-limited stages and elapsed monotonic time for timed stages. When either of two limits can end the stage, use the larger fraction. Handle crossed milestones at the next completed PPO iteration.
+
+- **Every 2.5% → show progress in the terminal.** Flush a line with the stage, progress, iteration, elapsed wall time, and relevant training metrics.
+- **Every 5% → inspect the current run and act.** Review the metrics since the last check and the behavior relevant to the stage. Compare commanded and actual motion, survival and falls, and the posture, foot contact, or disturbance recovery that the run is meant to improve. Treat a trainer health message as evidence for this review. Continue healthy runs. If evidence shows a real issue, pause the owned run at the next safe checkpoint, preserve the failing evidence, correct the cause, smoke-test the change, then resume or start the corrected stage. Compare the same metrics or scenarios to verify that the correction worked.
+- **Every 10% → save a resumable checkpoint.** Save the policy, optimizer, iteration, stage configuration, and curriculum state. If a review fails between scheduled saves, preserve a diagnostic checkpoint before changing the run. Save on normal completion and at controlled stops too.
+
+At the end of each stage, use the relevant independent evaluation and inspect the training curves and consecutive pose frames, including overhead frames when checking foot placement or turning. Advance the curriculum only after that stage's behavioral checks pass. Keep terminal milestones, review evidence, and checkpoint paths in the run log or session record.
+
 ### 3.4 Start-up checklist (before launching anything long-lived)
 1. `bash tools/proc.sh list` to see what this project already has registered. Alive jobs belong to an earlier session or the user: do not start a competing job for the same purpose, and do not stop it without being asked; report it and ask. Stale records are cleaned automatically.
 2. Look at what else is using the machine, read-only (`ps -eo pid,pgid,etime,cmd`, `nvidia-smi`). Other people's processes are never stopped by you; if they would slow or break the run, say so and ask.

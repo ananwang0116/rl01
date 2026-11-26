@@ -59,13 +59,30 @@ def main():
         ("KL 与学习率（自适应）", ["kl", "lr"]),
         ("动作标准差（探索程度）", ["std"]),
         ("足端横向外偏 mm（正 = 外八，0 最好）", ["foot_out_mm", "foot_abs_mm"]),
-        ("摆动脚离地高度 cm（越高越不蹭地，真实约 6-8）", ["swing_z_cm"]),
+        ("摆动脚平均离地 cm（混合场景，非抬脚峰值）", ["swing_z_cm"]),
         ("左右镜像对称损失（越小越对称）", ["sym"]),
     ]
     if cfg["env"].get("stairs"):
-        panels[3] = ("楼梯课程阶段 (0-8)", ["stage"])
+        panels[3] = ("记录的楼梯阶段（全阶段混训时固定）", ["stage"])
         panels[4] = (f"回合存活步数（超时 = {int(cfg['env']['episode_s'] / 0.02)}）", ["ep_len"])
         panels.append(("每迭代成功 / 结束回合", ["stair_success", "stair_done"]))
+    if cfg['env'].get('omni'):
+        panels.extend([
+            ('全方向幅度课程', ['direction_scale']),
+            ('航向平均绝对误差 deg', ['heading_deg']),
+            ('停止期间速度 m/s（含制动瞬态）', ['stop_speed']),
+            ('后退/侧移/转向相对误差', ['reverse_err', 'lateral_err', 'yaw_err']),
+        ])
+    if cfg['env'].get('maneuver_gait'):
+        panels.extend([
+            ('后退/转向机身高度 cm', ['reverse_height_cm','turn_height_cm']),
+            ('转向抬脚占比 / 支撑拖脚指标', ['turn_lift_fraction','turn_drag']),
+            ('步态相位跟踪分', ['gait_score']),
+        ])
+    if cfg['env'].get('robustness_curriculum'):
+        panels.append(('域随机化 / 多方向冲击强度课程', ['robustness_scale']))
+    if cfg['args'].get('flat_teacher_coef', 0) > 0:
+        panels.append(('平地教师动作 MSE', ['teacher_loss']))
     panels = [(t, [k for k in keys if k in d]) for t, keys in panels]  # 旧运行没有新列：跳过
     panels = [(t, keys) for t, keys in panels if keys]
     rows = (len(panels) + 2) // 3

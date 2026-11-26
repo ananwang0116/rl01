@@ -63,6 +63,7 @@ def make_env(ck, n, push, seed=123):
 
 def set_cmd(env, vx):
     env.cmd[:] = [vx, 0.0, 0.0]
+    env.cmd_target[:] = env.cmd
     env.cmd_left[:] = 10**9
     env._compute_obs(shift=False)
 

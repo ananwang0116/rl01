@@ -1,0 +1,232 @@
+<mujoco model="Agibot D1 Max">
+  <!-- Link frames, inertials and joint parameters are from the official max.urdf. -->
+  <compiler angle="radian" inertiafromgeom="false" fusestatic="false" />
+  <option timestep="0.002" integrator="implicitfast" cone="elliptic" />
+  <default>
+    <default class="visual">
+      <geom type="mesh" contype="0" conaffinity="0" group="2" />
+    </default>
+    <default class="collision">
+      <geom group="3" rgba="0 0 0 0" friction="0.9 0.005 0.0001" />
+    </default>
+    <default class="leg">
+      <position kp="350" kv="12" ctrllimited="true" forcelimited="true" />
+    </default>
+    <default class="wheel">
+      <velocity kv="6" forcelimited="true" />
+    </default>
+  </default>
+  <asset>
+    <mesh name="BASE_LINK" file="assets/base_visual.stl" />
+    <mesh name="IMU_ICM42688_LINK" file="max_description/meshes/IMU_ICM42688_LINK.STL" />
+    <mesh name="IMU_LUA300C_LINK" file="max_description/meshes/IMU_LUA300C_LINK.STL" />
+    <mesh name="F_AIRY_LINK" file="max_description/meshes/F_AIRY_LINK.STL" />
+    <mesh name="F_IMX415_LINK" file="max_description/meshes/F_IMX415_LINK.STL" />
+    <mesh name="FAR_LIHGT_LINK" file="max_description/meshes/FAR_LIHGT_LINK.STL" />
+    <mesh name="FBL_LIHGT_LINK" file="max_description/meshes/FBL_LIHGT_LINK.STL" />
+    <mesh name="R_AIRY_LINK" file="max_description/meshes/R_AIRY_LINK.STL" />
+    <mesh name="R_IMX415_LINK" file="max_description/meshes/R_IMX415_LINK.STL" />
+    <mesh name="RAR_LIHGT_LINK" file="max_description/meshes/RAR_LIHGT_LINK.STL" />
+    <mesh name="RBL_LIHGT_LINK" file="max_description/meshes/RBL_LIHGT_LINK.STL" />
+    <mesh name="FAR_RADARA22_LINK" file="max_description/meshes/FAR_RADARA22_LINK.STL" />
+    <mesh name="FBL_RADARA22_LINK" file="max_description/meshes/FBL_RADARA22_LINK.STL" />
+    <mesh name="FAR_ABAD_LINK" file="max_description/meshes/FAR_ABAD_LINK.STL" />
+    <mesh name="FAR_HIP_LINK" file="max_description/meshes/FAR_HIP_LINK.STL" />
+    <mesh name="FAR_KNEE_LINK" file="max_description/meshes/FAR_KNEE_LINK.STL" />
+    <mesh name="FAR_FOOT_LINK" file="max_description/meshes/FAR_FOOT_LINK.STL" />
+    <mesh name="FBL_ABAD_LINK" file="max_description/meshes/FBL_ABAD_LINK.STL" />
+    <mesh name="FBL_HIP_LINK" file="max_description/meshes/FBL_HIP_LINK.STL" />
+    <mesh name="FBL_KNEE_LINK" file="max_description/meshes/FBL_KNEE_LINK.STL" />
+    <mesh name="FBL_FOOT_LINK" file="max_description/meshes/FBL_FOOT_LINK.STL" />
+    <mesh name="RAR_ABAD_LINK" file="max_description/meshes/RAR_ABAD_LINK.STL" />
+    <mesh name="RAR_HIP_LINK" file="max_description/meshes/RAR_HIP_LINK.STL" />
+    <mesh name="RAR_KNEE_LINK" file="max_description/meshes/RAR_KNEE_LINK.STL" />
+    <mesh name="RAR_FOOT_LINK" file="max_description/meshes/RAR_FOOT_LINK.STL" />
+    <mesh name="RBL_ABAD_LINK" file="max_description/meshes/RBL_ABAD_LINK.STL" />
+    <mesh name="RBL_HIP_LINK" file="max_description/meshes/RBL_HIP_LINK.STL" />
+    <mesh name="RBL_KNEE_LINK" file="max_description/meshes/RBL_KNEE_LINK.STL" />
+    <mesh name="RBL_FOOT_LINK" file="max_description/meshes/RBL_FOOT_LINK.STL" />
+  </asset>
+  <worldbody>
+    <body name="BASE_LINK">
+      <freejoint name="root" />
+      <inertial pos="0.002176 0.011832 -0.009523" mass="20.25" fullinertia="0.120345 0.937020 0.987983 0.000149 -0.003415 0.001455" />
+      <geom class="visual" mesh="BASE_LINK" rgba="0.75294 0.75294 0.75294 1" />
+      <geom class="collision" name="BASE_LINK_collision" type="box" pos="0 0 -0.003" size="0.418 0.115 0.080" />
+      <body name="IMU_ICM42688_LINK" pos="0.0000 0.0000 0.0362">
+        <!-- Fixed URDF joint: IMU_ICM42688_JOINT -->
+        <geom class="visual" mesh="IMU_ICM42688_LINK" rgba="1 0.94902 0.89804 1" />
+        <site name="IMU_ICM42688" size="0.005" rgba="0 0 0 0" />
+      </body>
+      <body name="IMU_LUA300C_LINK" pos="0.0000 0.0000 0.00569">
+        <!-- Fixed URDF joint: IMU_LUA300C_JOINT -->
+        <geom class="visual" mesh="IMU_LUA300C_LINK" rgba="1 0.94902 0.89804 1" />
+        <site name="IMU_LUA300C" size="0.005" rgba="0 0 0 0" />
+      </body>
+      <body name="F_AIRY_LINK" pos="0.4043 0.0000 -0.0377">
+        <!-- Fixed URDF joint: F_AIRY_JOINT -->
+        <geom class="visual" mesh="F_AIRY_LINK" rgba="1 0.94902 0.89804 1" />
+      </body>
+      <body name="F_IMX415_LINK" pos="0.4123 0.0000 0.0378">
+        <!-- Fixed URDF joint: F_IMX415_JOINT -->
+        <geom class="visual" mesh="F_IMX415_LINK" rgba="1 0.94902 0.89804 1" />
+      </body>
+      <body name="FAR_LIHGT_LINK" pos="0.4203 -0.0309 0.0283">
+        <!-- Fixed URDF joint: FAR_LIHGT_JOINT -->
+        <geom class="visual" mesh="FAR_LIHGT_LINK" rgba="1 0.94902 0.89804 1" />
+      </body>
+      <body name="FBL_LIHGT_LINK" pos="0.4203 0.0309 0.0283">
+        <!-- Fixed URDF joint: FBL_LIHGT_JOINT -->
+        <geom class="visual" mesh="FBL_LIHGT_LINK" rgba="1 0.94902 0.89804 1" />
+      </body>
+      <body name="R_AIRY_LINK" pos="-0.4043 0.0000 -0.0377">
+        <!-- Fixed URDF joint: R_AIRY_JOINT -->
+        <geom class="visual" mesh="R_AIRY_LINK" rgba="1 0.94902 0.89804 1" />
+      </body>
+      <body name="R_IMX415_LINK" pos="-0.4123 0.0000 0.0378">
+        <!-- Fixed URDF joint: R_IMX415_JOINT -->
+        <geom class="visual" mesh="R_IMX415_LINK" rgba="1 0.94902 0.89804 1" />
+      </body>
+      <body name="RAR_LIHGT_LINK" pos="-0.4203 -0.0309 0.0283">
+        <!-- Fixed URDF joint: RAR_LIHGT_JOINT -->
+        <geom class="visual" mesh="RAR_LIHGT_LINK" rgba="1 0.94902 0.89804 1" />
+      </body>
+      <body name="RBL_LIHGT_LINK" pos="-0.4203 0.0309 0.0283">
+        <!-- Fixed URDF joint: RBL_LIHGT_JOINT -->
+        <geom class="visual" mesh="RBL_LIHGT_LINK" rgba="1 0.94902 0.89804 1" />
+      </body>
+      <body name="FAR_RADARA22_LINK" pos="0.1792 -0.1002 0.0500">
+        <!-- Fixed URDF joint: FAR_RADARA22_JOINT -->
+        <geom class="visual" mesh="FAR_RADARA22_LINK" rgba="1 0.94902 0.89804 1" />
+      </body>
+      <body name="FBL_RADARA22_LINK" pos="0.1792 0.1002 0.0500">
+        <!-- Fixed URDF joint: FBL_RADARA22_JOINT -->
+        <geom class="visual" mesh="FBL_RADARA22_LINK" rgba="1 0.94902 0.89804 1" />
+      </body>
+      <body name="FBL_ABAD_LINK" pos="0.272 0.065 0.0002">
+        <joint name="FBL_ABAD_JOINT" type="hinge" axis="1 0 0" limited="true" range="-0.523 0.697" />
+        <inertial pos="0.030211 0.015926 2.3073E-06" mass="0.26957" fullinertia="0.00020169 0.00029273 0.00025789 -7.0404E-05 1.4342E-08 7.5809E-09" />
+        <geom class="visual" mesh="FBL_ABAD_LINK" rgba="1 0.94902 0.89804 1" />
+        <geom class="collision" name="FBL_ABAD_LINK_collision" type="capsule" size="0.029" fromto="0.016 0 0 0.06 0.02 0" />
+        <body name="FBL_HIP_LINK" pos="0.0575 0.039 0" euler="0.00017453 0 0">
+          <joint name="FBL_HIP_JOINT" type="hinge" axis="0 1 0" limited="true" range="-2.443 2.443" />
+          <inertial pos="-0.00024776 0.054095 -0.12437" mass="2.6525" fullinertia="0.042044 0.041643 0.002984 -0.000008 0.000080 0.005443" />
+          <geom class="visual" mesh="FBL_HIP_LINK" rgba="0.69804 0.69804 0.69804 1" />
+          <geom class="collision" name="FBL_HIP_LINK_collision" type="capsule" size="0.035" fromto="0 0.027 0 0 0.069 -0.255" />
+          <body name="FBL_KNEE_LINK" pos="0 0.0442 -0.26">
+            <joint name="FBL_KNEE_JOINT" type="hinge" axis="0 1 0" limited="true" range="-2.801 2.801" />
+            <inertial pos="-9.0281E-05 0.024369 -0.17395" mass="1.5888" fullinertia="0.022185 0.022093 0.001572 -0.000003 -0.000012 0.000132" />
+            <geom class="visual" mesh="FBL_KNEE_LINK" rgba="0.75294 0.75294 0.75294 1" />
+            <geom class="collision" name="FBL_KNEE_LINK_collision" type="capsule" size="0.029" fromto="0 0.012 0 0 0.059 -0.272" />
+            <body name="FBL_FOOT_LINK" pos="0 0.0592 -0.28">
+              <joint name="FBL_FOOT_JOINT" type="hinge" axis="0 1 0" limited="false" />
+              <inertial pos="2.0302E-07 0.007766 -1.006E-06" mass="0.68796" fullinertia="0.0022048 0.0041699 0.0022106 1.0716E-10 -1.131E-06 7.6787E-11" />
+              <geom class="visual" mesh="FBL_FOOT_LINK" rgba="0.29804 0.29804 0.29804 1" />
+              <geom class="collision" name="FBL_FOOT_LINK_collision" type="cylinder" pos="0 0.0073 0" quat="0.7071067811865475 -0.7071067811865475 0 0" size="0.096 0.02325" />
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="FAR_ABAD_LINK" pos="0.272 -0.065 0.0002">
+        <joint name="FAR_ABAD_JOINT" type="hinge" axis="1 0 0" limited="true" range="-0.697 0.523" />
+        <inertial pos="0.030211 -0.015926 4.7238E-07" mass="0.26957" fullinertia="0.00020169 0.00029273 0.00025789 7.0404E-05 2.0546E-09 1.5E-09" />
+        <geom class="visual" mesh="FAR_ABAD_LINK" rgba="1 0.94902 0.89804 1" />
+        <geom class="collision" name="FAR_ABAD_LINK_collision" type="capsule" size="0.029" fromto="0.016 0 0 0.06 -0.02 0" />
+        <body name="FAR_HIP_LINK" pos="0.0575 -0.039 0">
+          <joint name="FAR_HIP_JOINT" type="hinge" axis="0 1 0" limited="true" range="-2.443 2.443" />
+          <inertial pos="0.000248 -0.054095 -0.124371" mass="2.6525" fullinertia="0.042044 0.041643 0.002984 -0.000008 -0.000080 -0.005443" />
+          <geom class="visual" mesh="FAR_HIP_LINK" rgba="0.698039215686274 0.698039215686274 0.698039215686274 1" />
+          <geom class="collision" name="FAR_HIP_LINK_collision" type="capsule" size="0.035" fromto="0 -0.027 0 0 -0.069 -0.255" />
+          <body name="FAR_KNEE_LINK" pos="0 -0.0442 -0.26">
+            <joint name="FAR_KNEE_JOINT" type="hinge" axis="0 1 0" limited="true" range="-2.801 2.801" />
+            <inertial pos="9.0281E-05 -0.024369 -0.17395" mass="1.5888" fullinertia="0.022185 0.022093 0.001572 -0.000003 0.000012 -0.000132" />
+            <geom class="visual" mesh="FAR_KNEE_LINK" rgba="0.75294 0.75294 0.75294 1" />
+            <geom class="collision" name="FAR_KNEE_LINK_collision" type="capsule" size="0.029" fromto="0 -0.012 0 0 -0.059 -0.272" />
+            <body name="FAR_FOOT_LINK" pos="0 -0.0592 -0.28">
+              <joint name="FAR_FOOT_JOINT" type="hinge" axis="0 1 0" limited="false" />
+              <inertial pos="-0.000000 -0.007766 -1.0061E-06" mass="0.68796" fullinertia="0.0022048 0.0041699 0.0022106 1.0664E-10 1.131E-06 7.6444E-11" />
+              <geom class="visual" mesh="FAR_FOOT_LINK" rgba="0.29804 0.29804 0.29804 1" />
+              <geom class="collision" name="FAR_FOOT_LINK_collision" type="cylinder" pos="0 -0.0073 0" quat="0.7071067811865475 -0.7071067811865475 0 0" size="0.096 0.02325" />
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="RBL_ABAD_LINK" pos="-0.272 0.065 0.0002">
+        <joint name="RBL_ABAD_JOINT" type="hinge" axis="1 0 0" limited="true" range="-0.523 0.697" />
+        <inertial pos="-0.030211 0.015926 0.000000" mass="0.26957" fullinertia="0.00020169 0.00029273 0.00025879 0.000070 0.000000 0.000000" />
+        <geom class="visual" mesh="RBL_ABAD_LINK" rgba="1 1 1 1" />
+        <geom class="collision" name="RBL_ABAD_LINK_collision" type="capsule" size="0.029" fromto="-0.016 0 0 -0.06 0.02 0" />
+        <body name="RBL_HIP_LINK" pos="-0.0575 0.039 0">
+          <joint name="RBL_HIP_JOINT" type="hinge" axis="0 1 0" limited="true" range="-2.443 2.443" />
+          <inertial pos="-0.00024776 0.054095 -0.12437" mass="2.6525" fullinertia="0.042044 0.041643 0.002984 -0.000008 0.000080 0.005443" />
+          <geom class="visual" mesh="RBL_HIP_LINK" rgba="0.69804 0.69804 0.69804 1" />
+          <geom class="collision" name="RBL_HIP_LINK_collision" type="capsule" size="0.035" fromto="0 0.027 0 0 0.069 -0.255" />
+          <body name="RBL_KNEE_LINK" pos="0 0.0442 -0.26">
+            <joint name="RBL_KNEE_JOINT" type="hinge" axis="0 1 0" limited="true" range="-2.801 2.801" />
+            <inertial pos="-9.0281E-05 0.024369 -0.17395" mass="1.5888" fullinertia="0.022185 0.022093 0.001572 -0.000003 -0.000012 0.000132" />
+            <geom class="visual" mesh="RBL_KNEE_LINK" rgba="0.75294 0.75294 0.75294 1" />
+            <geom class="collision" name="RBL_KNEE_LINK_collision" type="capsule" size="0.029" fromto="0 0.012 0 0 0.059 -0.272" />
+            <body name="RBL_FOOT_LINK" pos="0 0.0592 -0.28">
+              <joint name="RBL_FOOT_JOINT" type="hinge" axis="0 1 0" limited="false" />
+              <inertial pos="2.0294E-07 0.007766 -1.006E-06" mass="0.68796" fullinertia="0.0022048 0.0041699 0.0022106 1.0789E-10 -1.131E-06 7.6642E-11" />
+              <geom class="visual" mesh="RBL_FOOT_LINK" rgba="0.29804 0.29804 0.29804 1" />
+              <geom class="collision" name="RBL_FOOT_LINK_collision" type="cylinder" pos="0 0.0073 0" quat="0.7071067811865475 -0.7071067811865475 0 0" size="0.096 0.02325" />
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="RAR_ABAD_LINK" pos="-0.272 -0.065 0.0002">
+        <joint name="RAR_ABAD_JOINT" type="hinge" axis="1 0 0" limited="true" range="-0.697 0.523" />
+        <inertial pos="-0.030211 -0.015926 -4.7238E-07" mass="0.26957" fullinertia="0.00020169 0.00029273 0.00025789 -7.0404E-05 2.0546E-09 1.5E-09" />
+        <geom class="visual" mesh="RAR_ABAD_LINK" rgba="1 0.94902 0.89804 1" />
+        <geom class="collision" name="RAR_ABAD_LINK_collision" type="capsule" size="0.029" fromto="-0.016 0 0 -0.06 -0.02 0" />
+        <body name="RAR_HIP_LINK" pos="-0.0575 -0.039 0">
+          <joint name="RAR_HIP_JOINT" type="hinge" axis="0 1 0" limited="true" range="-2.443 2.443" />
+          <inertial pos="0.00024776 -0.054095 -0.12437" mass="2.6525" fullinertia="0.042044 0.041643 0.002984 -0.000008 -0.000080 -0.005443" />
+          <geom class="visual" mesh="RAR_HIP_LINK" rgba="0.69804 0.69804 0.69804 1" />
+          <geom class="collision" name="RAR_HIP_LINK_collision" type="capsule" size="0.035" fromto="0 -0.027 0 0 -0.069 -0.255" />
+          <body name="RAR_KNEE_LINK" pos="0 -0.0442 -0.26">
+            <joint name="RAR_KNEE_JOINT" type="hinge" axis="0 1 0" limited="true" range="-2.801 2.801" />
+            <inertial pos="9.0281E-05 -0.024369 -0.17395" mass="1.5888" fullinertia="0.022185 0.022093 0.001572 -0.000003 0.000012 -0.000132" />
+            <geom class="visual" mesh="RAR_KNEE_LINK" rgba="0.75294 0.75294 0.75294 1" />
+            <geom class="collision" name="RAR_KNEE_LINK_collision" type="capsule" size="0.029" fromto="0 -0.012 0 0 -0.059 -0.272" />
+            <body name="RAR_FOOT_LINK" pos="0 -0.0592 -0.28">
+              <joint name="RAR_FOOT_JOINT" type="hinge" axis="0 1 0" limited="false" />
+              <inertial pos="-2.0294E-07 -0.007766 -1.006E-06" mass="0.68796" fullinertia="0.0022048 0.0041699 0.0022106 1.0789E-10 1.131E-06 7.6641E-11" />
+              <geom class="visual" mesh="RAR_FOOT_LINK" rgba="0.29804 0.29804 0.29804 1" />
+              <geom class="collision" name="RAR_FOOT_LINK_collision" type="cylinder" pos="0 -0.0073 0" quat="0.7071067811865475 -0.7071067811865475 0 0" size="0.096 0.02325" />
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <position class="leg" name="FBL_ABAD_JOINT" joint="FBL_ABAD_JOINT" forcerange="-150 150" ctrlrange="-0.523 0.697" />
+    <position class="leg" name="FBL_HIP_JOINT" joint="FBL_HIP_JOINT" forcerange="-150 150" ctrlrange="-2.443 2.443" />
+    <position class="leg" name="FBL_KNEE_JOINT" joint="FBL_KNEE_JOINT" forcerange="-150 150" ctrlrange="-2.801 2.801" />
+    <velocity class="wheel" name="FBL_FOOT_JOINT" joint="FBL_FOOT_JOINT" forcerange="-50 50" />
+    <position class="leg" name="FAR_ABAD_JOINT" joint="FAR_ABAD_JOINT" forcerange="-150 150" ctrlrange="-0.697 0.523" />
+    <position class="leg" name="FAR_HIP_JOINT" joint="FAR_HIP_JOINT" forcerange="-150 150" ctrlrange="-2.443 2.443" />
+    <position class="leg" name="FAR_KNEE_JOINT" joint="FAR_KNEE_JOINT" forcerange="-150 150" ctrlrange="-2.801 2.801" />
+    <velocity class="wheel" name="FAR_FOOT_JOINT" joint="FAR_FOOT_JOINT" forcerange="-50 50" />
+    <position class="leg" name="RBL_ABAD_JOINT" joint="RBL_ABAD_JOINT" forcerange="-150 150" ctrlrange="-0.523 0.697" />
+    <position class="leg" name="RBL_HIP_JOINT" joint="RBL_HIP_JOINT" forcerange="-150 150" ctrlrange="-2.443 2.443" />
+    <position class="leg" name="RBL_KNEE_JOINT" joint="RBL_KNEE_JOINT" forcerange="-150 150" ctrlrange="-2.801 2.801" />
+    <velocity class="wheel" name="RBL_FOOT_JOINT" joint="RBL_FOOT_JOINT" forcerange="-50 50" />
+    <position class="leg" name="RAR_ABAD_JOINT" joint="RAR_ABAD_JOINT" forcerange="-150 150" ctrlrange="-0.697 0.523" />
+    <position class="leg" name="RAR_HIP_JOINT" joint="RAR_HIP_JOINT" forcerange="-150 150" ctrlrange="-2.443 2.443" />
+    <position class="leg" name="RAR_KNEE_JOINT" joint="RAR_KNEE_JOINT" forcerange="-150 150" ctrlrange="-2.801 2.801" />
+    <velocity class="wheel" name="RAR_FOOT_JOINT" joint="RAR_FOOT_JOINT" forcerange="-50 50" />
+  </actuator>
+  <sensor>
+    <gyro name="imu_gyro" site="IMU_ICM42688" />
+    <accelerometer name="imu_accelerometer" site="IMU_ICM42688" />
+    <framequat name="imu_orientation" objtype="site" objname="IMU_ICM42688" />
+  </sensor>
+  <keyframe>
+    <!-- Front and rear knees bend toward the center of the chassis. -->
+    <key name="home" qpos="0 0 0.566 1 0 0 0  0 0.55 -1.05 0  0 0.55 -1.05 0  0 -0.55 1.05 0  0 -0.55 1.05 0"
+         ctrl="0 0.55 -1.05 0  0 0.55 -1.05 0  0 -0.55 1.05 0  0 -0.55 1.05 0" />
+  </keyframe>
+</mujoco>

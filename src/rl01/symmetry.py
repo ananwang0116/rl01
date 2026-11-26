@@ -21,21 +21,26 @@ def mirror_joints(x):
     return x[..., LEG_PERM] * JOINT_SIGN
 
 
-def mirror_obs(obs):
-    """actor 观测的镜像（支持单帧 45 维或 K 帧拼接 K*45 维）。"""
-    if obs.shape[-1] != 45:
-        assert obs.shape[-1] % 45 == 0
-        k = obs.shape[-1] // 45
-        return mirror_obs(obs.reshape(*obs.shape[:-1], k, 45)).reshape(*obs.shape)
+def mirror_obs(obs, frame_dim=45):
+    """45维旧帧/46维带航向帧的镜像，历史帧布局由调用方显式传入。"""
+    if obs.shape[-1] != frame_dim:
+        assert obs.shape[-1] % frame_dim == 0
+        k = obs.shape[-1] // frame_dim
+        return mirror_obs(obs.reshape(*obs.shape[:-1], k, frame_dim), frame_dim).reshape(*obs.shape)
     sign3 = lambda a, b, c: torch.as_tensor([a, b, c], device=obs.device, dtype=obs.dtype)
-    return torch.cat([
+    parts = [
         obs[..., 0:3] * sign3(-1, 1, -1),
         obs[..., 3:6] * sign3(1, -1, 1),
         obs[..., 6:9] * sign3(1, -1, -1),
         mirror_joints(obs[..., 9:21]),
         mirror_joints(obs[..., 21:33]),
         mirror_joints(obs[..., 33:45]),
-    ], dim=-1)
+    ]
+    if frame_dim >= 46:
+        parts.append(-obs[..., 45:46])
+    if frame_dim == 48:
+        parts.append(-obs[..., 46:48])  # phase+pi swaps the diagonal pairs
+    return torch.cat(parts, dim=-1)
 
 
 def mirror_action(a):
