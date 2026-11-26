@@ -7,7 +7,7 @@ from mujoco import rollout
 import numpy as np
 
 from rl01.d1_max_env import DECIMATION, JOINT_NAMES, LEGS, LEG_MIRROR, N_ACT, STATE, mirror_action
-from rl01.d1_max_champ import DiagonalGait, SUPPORT_S, SWING_S, WheelLegIK
+from rl01.d1_max_champ import DiagonalGait, SUPPORT_S, SWING_S, WheelLegIK, angle_delta
 from rl01.env import quat_to_R
 from rl01.sim import D1_MAX_SCENE
 
@@ -35,6 +35,7 @@ class OmniConfig:
     champ_ik: bool = False
     champ_refine: bool = False
     vy_turn_only: bool = False
+    free_gait: bool = False
 
 
 def mirror_obs(obs):
@@ -132,10 +133,15 @@ class OmniEnv:
         self.phase = np.zeros(num_envs)
         self.lateral = np.zeros(num_envs)
         self.drive_vx = np.zeros(num_envs)
+        self.heading_target = np.zeros(num_envs)
+        self.turn_anchor_xy = np.zeros((num_envs, 2))
+        self.was_in_place_turn = np.zeros(num_envs, dtype=bool)
+        self.was_moving = np.zeros(num_envs, dtype=bool)
         self.pending_stop = np.zeros(num_envs, dtype=bool)
         self.diagonal = (DiagonalGait(num_envs, self.dt, self.foot_xy, self.cfg.champ_refine)
-                         if self.cfg.champ_gait else None)
-        self.champ_ik = WheelLegIK(model, data, LEGS, self.home_leg_q, wheel_geoms) if self.cfg.champ_ik else None
+                         if self.cfg.champ_gait and not self.cfg.free_gait else None)
+        self.champ_ik = (WheelLegIK(model, data, LEGS, self.home_leg_q, wheel_geoms)
+                         if (self.cfg.champ_ik and not self.cfg.free_gait) or self.cfg.free_gait else None)
         self.reset(np.arange(num_envs))
 
     def close(self):
@@ -231,7 +237,13 @@ class OmniEnv:
         self.tap_remaining[ids] = self.tap_side[ids] = self.previous_yaw[ids] = self.lateral[ids] = 0
         self.tap_heading_error[ids] = 0
         self.drive_vx[ids] = 0
-        self.phase[ids] = self.rng.choice([0.0, 0.5], len(ids)) if self.training else 0
+        self.heading_target[ids] = 0
+        self.turn_anchor_xy[ids] = self.home_state[self.root:self.root + 2]
+        self.was_in_place_turn[ids] = False
+        self.was_moving[ids] = False
+        self.phase[ids] = self.rng.choice([0.0, 0.5], len(ids)) if (self.training and not self.cfg.free_gait) else (
+            self.rng.random(len(ids)) if self.training else 0
+        )
         self.pending_stop[ids] = False
         if self.diagonal is not None:
             self.reset_gait(ids)
@@ -251,20 +263,62 @@ class OmniEnv:
         w, x, y, z = self.state[:, self.root + 3:self.root + 7].T
         return np.arctan2(2 * (w * z + x * y), 1 - 2 * (y*y + z*z))
 
+    def _sync_free_phase(self):
+        vx, vy, wz = self.command.T
+        moving = (np.abs(vx) > .03) | (np.abs(vy) > .03) | (np.abs(wz) > .03)
+        onset = moving & ~self.was_moving
+        if onset.any():
+            lat_dom = np.abs(vy[onset]) >= np.abs(wz[onset]) * .25
+            # Left lateral (vy > 0) -> FAR+RBL (0.59) first; left turn (wz > 0) -> FBL+RAR (0.09) first.
+            first_pair1 = np.where(lat_dom, vy[onset] > 0, wz[onset] < 0)
+            self.phase[onset] = np.where(first_pair1, .59, .09)
+        self.phase[~moving] = 0.0
+        self.was_moving[:] = moving
+        return moving
+
+    def _free_gait_cue(self):
+        moving = (
+            (np.abs(self.command[:, 0]) > .03)
+            | (np.abs(self.command[:, 1]) > .03)
+            | (np.abs(self.command[:, 2]) > .03)
+        )
+        phase = self.phase
+        sw0 = (phase >= .09) & (phase < .50) & moving
+        sw1 = (phase >= .59) & (phase < 1.00) & moving
+        u0 = np.clip((phase - .09) / .41, 0., 1.)
+        u1 = np.clip((phase - .59) / .41, 0., 1.)
+        s0 = 16 * u0**2 * (1 - u0)**2 * sw0
+        s1 = 16 * u1**2 * (1 - u1)**2 * sw1
+        swing = np.stack((sw0, sw1, sw1, sw0), axis=1)
+        shape = np.stack((s0, s1, s1, s0), axis=1)
+        return moving, swing, shape
+
     def reset_gait(self, ids):
         if self.diagonal is not None:
             self.diagonal.reset(ids, self.state[ids, self.root:self.root + 2], self.measured_yaw()[ids])
+        if self.cfg.free_gait:
+            self.heading_target[ids] = self.measured_yaw()[ids]
+            self.turn_anchor_xy[ids] = self.state[ids, self.root:self.root + 2]
+            self.was_in_place_turn[ids] = False
+            self.was_moving[ids] = False
 
     def observations(self, noise=True):
         v, ang, gravity = self.body_state()
-        phase = 2 * np.pi * self.phase
         tap = np.zeros((self.n, 4))
         tap[:, 2] = self.tap_remaining * (self.tap_side > 0) / self.cfg.tap_step_s
         tap[:, 3] = self.tap_remaining * (self.tap_side < 0) / self.cfg.tap_step_s
+        phase_mask = np.ones((self.n, 1))
         if self.diagonal is not None:
             tap = self.diagonal.swing * (self.diagonal.remaining[:, None] / (SUPPORT_S + SWING_S))
+        elif self.cfg.free_gait:
+            moving = self._sync_free_phase()
+            phase_mask = moving[:, None]
+            _, _, tap = self._free_gait_cue()
+            self.tap_heading_error[:] = np.clip(angle_delta(self.heading_target, self.measured_yaw()), -.5, .5)
+        phase = 2 * np.pi * self.phase
+        phase_feats = np.column_stack((np.sin(phase), np.cos(phase))) * phase_mask
         obs = np.column_stack((ang * .3, gravity, self.command, self.state[:, self.q_idx] - self.home_leg_q,
-                               self.state[:, self.dq_idx] * self.dq_scale, self.action, np.sin(phase), np.cos(phase),
+                               self.state[:, self.dq_idx] * self.dq_scale, self.action, phase_feats,
                                tap, self.tap_heading_error)).astype(np.float32)
         critic = np.column_stack((obs, v, self.state[:, self.root + 2])).astype(np.float32)
         if self.training and noise:
@@ -274,6 +328,8 @@ class OmniEnv:
         return obs, critic
 
     def controls(self, action):
+        if self.cfg.free_gait:
+            return self.free_controls(action)
         if self.diagonal is not None:
             return self.champ_controls(action)
         vx, vy, yaw = self.command.T
@@ -350,6 +406,46 @@ class OmniEnv:
         self.ctrl[:, self.wheel_ids] = np.clip(wheel + wheel_residual, -self.cfg.wheel_speed_limit, self.cfg.wheel_speed_limit)
         return offsets
 
+    def free_controls(self, action):
+        vx, vy, wz = self.command.T
+        self._sync_free_phase()
+        moving, swing, shape = self._free_gait_cue()
+        phase = self.phase
+        u0 = np.clip((phase - .09) / .41, 0., 1.)
+        u1 = np.clip((phase - .59) / .41, 0., 1.)
+        st0 = np.clip(((phase - .50) % 1.0) / .59, 0., 1.)
+        st1 = np.clip((phase % 1.0) / .59, 0., 1.)
+        u = np.stack((u0, u1, u1, u0), axis=1)
+        st_u = np.stack((st0, st1, st1, st0), axis=1)
+        prog = np.where(swing, 2 * u - 1, 1 - 2 * st_u) * moving[:, None]
+        activity = np.clip(np.maximum(np.abs(vy) / .08, np.abs(wz) / .12), 0., 1.)
+        lat_dom = np.abs(vy) >= np.abs(wz) * .25
+        foot_vy = 2.5 * vy[:, None] + 1.25 * wz[:, None] * self.foot_xy[None, :, 0]
+        dy = np.clip(foot_vy * .20, -.085, .085) * prog * activity[:, None]
+        turn_lift = np.interp(np.abs(wz), [.05, .20, .35, .52], [.015, .022, .034, .042])
+        lift = np.where(lat_dom, .032, turn_lift) * activity
+        partner_sin = np.sin(np.pi * u[:, [1, 0, 3, 2]]) * swing[:, [1, 0, 3, 2]]
+        dz = lift[:, None] * shape - .005 * activity[:, None] * partner_sin
+        # Decouple ABAD (lateral y) from planar z IK so lateral/turn steps never bend knees asymmetrically.
+        c = np.broadcast_to(self.champ_ik.home_center, (self.n, 4, 3)).copy()
+        c[:, :, 2] += dz
+        q_base = self.champ_ik.solve(c) + self.champ_ik.home_correction
+        q_base[:, :, 0] += dy / (-self.champ_ik.home_center[None, :, 2])
+        self.phase[:] = np.where(moving, (self.phase + self.dt * 2.2727) % 1.0, 0.0)
+        self.heading_target[:] = angle_delta(self.heading_target + self.command[:, 2] * self.dt, 0.0)
+        delta_vx = self.command[:, 0] - self.drive_vx
+        self.drive_vx += np.clip(delta_vx, -3.5 * self.dt, 3.5 * self.dt)
+        leg_scale = np.tile([.24, .14, .14], 4)
+        self.ctrl[:, self.leg_ids] = q_base.reshape(-1, 12) + leg_scale * action[:, self.leg_actions]
+        # In-place / low-vx turns use diagonal stepping only (no forced differential wheel spin).
+        pure_turn = (np.abs(wz) > .03) & (np.abs(vx) < .05) & (np.abs(vy) < .05)
+        drive_arc = np.clip(np.abs(vx) / .30, 0., 1.)
+        wheel_ff = (self.drive_vx[:, None] + drive_arc[:, None] * self.command[:, 2:3] * .215 * np.array([-1., 1., -1., 1.])) / self.radius
+        wheel_scale = np.where(pure_turn, .9, 2.4)[:, None]
+        wheel_res = wheel_scale * action[:, 3::4]
+        self.ctrl[:, self.wheel_ids] = np.clip(wheel_ff + wheel_res, -self.cfg.wheel_speed_limit, self.cfg.wheel_speed_limit)
+        return np.stack((np.zeros_like(dy), dy, dz), axis=-1)
+
     def step(self, action, *, control_targets=None, external_wrench=None):
         action = np.clip(action, -1, 1)
         if control_targets is None:
@@ -383,50 +479,119 @@ class OmniEnv:
         axis_z = np.clip(np.abs(1 - 2 * (qx**2 + qy**2)), 0, 1)
         support = self.radius * np.sqrt(1 - axis_z**2) + self.half_width * axis_z
         clearance = np.maximum(0, np.nan_to_num(wheel_frames[:, :, 2] - support))
-        target_vx = self.drive_vx if self.diagonal is not None else self.command[:, 0]
+        target_vx = self.drive_vx if (self.diagonal is not None or self.cfg.free_gait) else self.command[:, 0]
         error = np.column_stack((v[:, 0] - target_vx, v[:, 1] - self.command[:, 1]))
         yaw_error = ang[:, 2] - self.command[:, 2]
-        if self.diagonal is None:
-            tap_active = (self.tap_remaining > 0) & ~invalid
-            self.tap_heading_error[:] = np.where(
-                tap_active, np.clip(self.tap_heading_error - self.dt * yaw_error, -.14, .14),
-                .86 * self.tap_heading_error,
+        if self.cfg.free_gait:
+            heading_error = angle_delta(self.heading_target, self.measured_yaw())
+            self.tap_heading_error[:] = np.clip(heading_error, -.5, .5)
+            moving, swing_mask, cue = self._free_gait_cue()
+            in_place_turn = (np.abs(self.command[:, 2]) > .03) & (np.abs(self.command[:, 0]) < .02) & (np.abs(self.command[:, 1]) < .02)
+            entering_turn = in_place_turn & ~self.was_in_place_turn
+            self.turn_anchor_xy[entering_turn] = self.state[entering_turn, self.root:self.root + 2]
+            self.was_in_place_turn[:] = in_place_turn
+            vy_mode = (np.abs(self.command[:, 1]) > .03) & (np.abs(self.command[:, 0]) < .02) & (np.abs(self.command[:, 2]) < .02)
+            stand_mode = ~moving
+            vy_frac = np.clip(np.abs(self.command[:, 1]) / max(self.cfg.max_lateral, 1e-4), 0., 1.)
+            vy_peak = .021 + .010 * vy_frac
+            # Slow turns skim 1.4-2.0 cm (gentle posture pivot); fast turns hop 3.2-3.8 cm diagonally.
+            turn_peak = np.interp(np.abs(self.command[:, 2]), [.05, .20, .35, .52], [.014, .020, .030, .038])
+            swing_peak = np.where(vy_mode, vy_peak, turn_peak)
+            target_clr = swing_peak[:, None] * cue
+            swing_active = swing_mask & moving[:, None]
+            has_swing = swing_active.any(axis=1)
+            swing_score = np.where(
+                has_swing,
+                (np.exp(-np.square((clearance - target_clr) / .015)) * swing_active).sum(axis=1) / np.maximum(swing_active.sum(axis=1), 1),
+                1.0,
             )
-        terms = {
-            "vx": 1.25 * np.exp(-(error[:, 0] / .21)**2),
-            "vy": 1.55 * np.exp(-(error[:, 1] / .13)**2)
-                  + .70 * np.clip(np.sign(self.command[:, 1]) * v[:, 1] / .23, -.5, 1.0),
-            "yaw": 1.15 * np.exp(-(yaw_error / .25)**2),
-            "lift": -.25 * np.square((clearance - offsets[:, :, 2]) / .025).mean(axis=1),
-            "posture": -2.5 * tilt**2 - 13 * (height - .553)**2,
-            "smooth": -.15 * np.square(action - self.action).mean(axis=1) - .09 * np.square(action).mean(axis=1),
-        }
-        if self.cfg.corrective_gait:
-            terms["vy"] += 1.10 * np.clip(np.sign(self.command[:, 1]) * v[:, 1] / .23, -.5, 1.0)
-            terms["vx"] -= .6 * np.square(error[:, 0] / .30)
-        if self.diagonal is not None:
-            swing = self.diagonal.swing if control_targets is None else np.zeros((self.n, 4), dtype=bool)
+            stance_score = (np.exp(-np.square(clearance / .012)) * (~swing_active)).sum(axis=1) / np.maximum((~swing_active).sum(axis=1), 1)
+            over_lift = np.maximum(0., clearance - np.maximum(.038, swing_peak + .016)[:, None])
+            q_dev = (self.state[:, self.q_idx] - self.home_leg_q).reshape(self.n, 4, 3)
+            wheel_dq = self.state[:, self.dq_idx[3::4]]
             rotation = quat_to_R(self.state[:, self.root + 3:self.root + 7])
             base_pos = self.state[:, self.root:self.root + 3]
             foot_body = np.einsum("nji,nkj->nki", rotation, wheel_frames[:, :, :3] - base_pos[:, None, :])
-            target_foot_body = self.home_foot_body[None, :, :] + offsets
-            foot_err_sq = np.square(foot_body - target_foot_body).sum(axis=2)
-            desired_clearance = np.maximum(offsets[:, :, 2], 0.)
-            missed_lift = np.maximum(0., desired_clearance * .65 - clearance) * swing
-            stance_lift = clearance * (~swing)
-            terms["lift"] += (
-                1.20 * np.exp(-foot_err_sq.mean(axis=1) / (.035**2))
-                - .60 * np.square(missed_lift / .020).sum(axis=1)
-                - .80 * np.square(stance_lift / .015).sum(axis=1)
-            )
-            terms["vy"] = (
-                2.00 * np.exp(-(error[:, 1] / .10)**2)
-                + 1.20 * np.clip(np.sign(self.command[:, 1]) * v[:, 1] / .23, -.5, 1.0)
-            )
-            terms["yaw"] += .80 * np.exp(-(self.tap_heading_error / .08)**2)
-            zero_vx = np.abs(self.command[:, 0]) < .01
-            terms["vx"] -= 1.50 * np.square(v[:, 0]) * zero_vx
-            terms["posture"] = -4.0 * tilt**2 - 14.0 * (height - .553)**2 - .50 * np.square(self.tap_heading_error)
+            foot_dx = foot_body[:, :, 0] - self.home_foot_body[None, :, 0]
+            pair_dx_asym = np.square((foot_dx[:, 0] - foot_dx[:, 1]) / .03) + np.square((foot_dx[:, 2] - foot_dx[:, 3]) / .03)
+            turn_disp_sq = np.sum(np.square(base_pos[:, :2] - self.turn_anchor_xy), axis=1) * in_place_turn
+            lat_prog = np.clip(np.sign(self.command[:, 1]) * v[:, 1] / max(self.cfg.max_lateral, 1e-4), -.5, 1.0) * (np.abs(self.command[:, 1]) > .03)
+            yaw_prog = np.clip(np.sign(self.command[:, 2]) * ang[:, 2] / .45, -.5, 1.0) * (np.abs(self.command[:, 2]) > .03)
+            terms = {
+                "vx": 1.20 * np.exp(-(error[:, 0] / .12)**2) - 3.00 * np.square(v[:, 0]) * (vy_mode | stand_mode) - 4.00 * np.square(v[:, 0]) * in_place_turn,
+                "vy": (
+                    2.20 * np.exp(-(error[:, 1] / .07)**2)
+                    + 1.60 * np.exp(-(error[:, 1] / .16)**2)
+                    + 2.00 * lat_prog
+                    - 4.00 * np.square(v[:, 1]) * in_place_turn
+                    - 2.00 * np.square(v[:, 1]) * stand_mode
+                ),
+                "yaw": (
+                    2.00 * np.exp(-(yaw_error / .12)**2)
+                    + 1.50 * np.exp(-(yaw_error / .30)**2)
+                    + 1.60 * yaw_prog
+                    + 1.20 * np.exp(-(heading_error / .08)**2)
+                    - 3.50 * np.square(heading_error)
+                    - 1.50 * np.square(yaw_error) * (np.abs(self.command[:, 2]) < .02)
+                ),
+                "lift": (
+                    2.00 * swing_score * moving
+                    + 1.00 * stance_score
+                    - .40 * np.square(over_lift / .020).mean(axis=1)
+                ),
+                "posture": (
+                    -1.20 * tilt**2 - 10.0 * (height - .553)**2
+                    - 15.0 * turn_disp_sq + 1.00 * np.exp(-turn_disp_sq / (.06**2)) * in_place_turn
+                    - .50 * np.square(q_dev[:, :, 2]).mean(axis=1)
+                    - np.where(in_place_turn | stand_mode, 1.50, .50) * np.square(foot_dx / .045).mean(axis=1)
+                    - (1.20 * (in_place_turn | stand_mode) + .25 * vy_mode) * pair_dx_asym
+                    - .60 * np.square(wheel_dq / 2.0).mean(axis=1) * (in_place_turn | stand_mode)
+                    - 1.20 * np.abs(q_dev).mean(axis=(1, 2)) * stand_mode
+                ),
+                "smooth": -.06 * np.square(action - self.action).mean(axis=1) - .015 * np.square(action).mean(axis=1),
+            }
+        else:
+            if self.diagonal is None:
+                tap_active = (self.tap_remaining > 0) & ~invalid
+                self.tap_heading_error[:] = np.where(
+                    tap_active, np.clip(self.tap_heading_error - self.dt * yaw_error, -.14, .14),
+                    .86 * self.tap_heading_error,
+                )
+            terms = {
+                "vx": 1.25 * np.exp(-(error[:, 0] / .21)**2),
+                "vy": 1.55 * np.exp(-(error[:, 1] / .13)**2)
+                      + .70 * np.clip(np.sign(self.command[:, 1]) * v[:, 1] / .23, -.5, 1.0),
+                "yaw": 1.15 * np.exp(-(yaw_error / .25)**2),
+                "lift": -.25 * np.square((clearance - offsets[:, :, 2]) / .025).mean(axis=1),
+                "posture": -2.5 * tilt**2 - 13 * (height - .553)**2,
+                "smooth": -.15 * np.square(action - self.action).mean(axis=1) - .09 * np.square(action).mean(axis=1),
+            }
+            if self.cfg.corrective_gait:
+                terms["vy"] += 1.10 * np.clip(np.sign(self.command[:, 1]) * v[:, 1] / .23, -.5, 1.0)
+                terms["vx"] -= .6 * np.square(error[:, 0] / .30)
+            if self.diagonal is not None:
+                swing = self.diagonal.swing if control_targets is None else np.zeros((self.n, 4), dtype=bool)
+                rotation = quat_to_R(self.state[:, self.root + 3:self.root + 7])
+                base_pos = self.state[:, self.root:self.root + 3]
+                foot_body = np.einsum("nji,nkj->nki", rotation, wheel_frames[:, :, :3] - base_pos[:, None, :])
+                target_foot_body = self.home_foot_body[None, :, :] + offsets
+                foot_err_sq = np.square(foot_body - target_foot_body).sum(axis=2)
+                desired_clearance = np.maximum(offsets[:, :, 2], 0.)
+                missed_lift = np.maximum(0., desired_clearance * .65 - clearance) * swing
+                stance_lift = clearance * (~swing)
+                terms["lift"] += (
+                    1.20 * np.exp(-foot_err_sq.mean(axis=1) / (.035**2))
+                    - .60 * np.square(missed_lift / .020).sum(axis=1)
+                    - .80 * np.square(stance_lift / .015).sum(axis=1)
+                )
+                terms["vy"] = (
+                    2.00 * np.exp(-(error[:, 1] / .10)**2)
+                    + 1.20 * np.clip(np.sign(self.command[:, 1]) * v[:, 1] / .23, -.5, 1.0)
+                )
+                terms["yaw"] += .80 * np.exp(-(self.tap_heading_error / .08)**2)
+                zero_vx = np.abs(self.command[:, 0]) < .01
+                terms["vx"] -= 1.50 * np.square(v[:, 0]) * zero_vx
+                terms["posture"] = -4.0 * tilt**2 - 14.0 * (height - .553)**2 - .50 * np.square(self.tap_heading_error)
         fall = invalid | (height < .37) | (tilt > .68)
         self.age += 1
         timeout = ~fall & (self.age >= self.max_steps)

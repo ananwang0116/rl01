@@ -1,1 +1,0 @@
-57778	2695411	/home/an/.local/bin/uv run --no-sync python -u src/rl01/train_d1_max_omni.py --output runs/d1_vy_turn_s2 --resume runs/d1_vy_turn_s1/model_118.pt --iterations 200 --num-envs 256 --nthread 14 --device cpu --champ-gait --champ-ik --champ-refine --vy-turn-only --robustness 0.70 --max-seconds 80

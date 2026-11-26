@@ -16,6 +16,7 @@ from rl01.ppo import ActorCritic, PPO
 
 TASK = "d1-max-omni-v2"
 CHAMP_TASK = "d1-max-omni-champ-v1"
+FREE_TASK = "d1-max-omni-free-v1"
 HIDDEN = (192, 128, 64)
 SPEED_LADDER = (.65, 1., 1.5, 2., 2.6, 3., 3.5)
 
@@ -29,16 +30,22 @@ class MirroredActor(torch.nn.Module):
         return .5 * (self.network(obs) + mirror_action(self.network(mirror_obs(obs))))
 
 
-def make_policy():
-    actor_critic = ActorCritic(N_OBS, N_CRITIC_OBS, N_ACT, hidden=HIDDEN, init_std=.23)
+def task_name(cfg):
+    if getattr(cfg, "free_gait", False):
+        return FREE_TASK
+    return CHAMP_TASK if getattr(cfg, "champ_gait", False) else TASK
+
+
+def make_policy(init_std=.23):
+    actor_critic = ActorCritic(N_OBS, N_CRITIC_OBS, N_ACT, hidden=HIDDEN, init_std=init_std)
     actor_critic.actor = MirroredActor(actor_critic.actor)
     return actor_critic
 
 
 def read_checkpoint(path, device="cpu"):
     ckpt = torch.load(path, map_location=device, weights_only=True)
-    expected = CHAMP_TASK if ckpt["env"].get("champ_gait", False) else TASK
-    if ckpt["task"] != expected or ckpt["joint_names"] != JOINT_NAMES:
+    cfg = OmniConfig(**ckpt["env"])
+    if ckpt["task"] != task_name(cfg) or ckpt["joint_names"] != JOINT_NAMES:
         raise ValueError(f"checkpoint task or joint mapping mismatch: {path}")
     return ckpt
 
@@ -64,7 +71,8 @@ def run(args):
             torch.cuda.set_per_process_memory_fraction(min(1., allowed / total), device=0)
         print(f"cuda_device={torch.cuda.get_device_name(0)} free_gib={free / 1024**3:.2f} "
               f"allocator_limit_gib={args.gpu_memory_gib}", flush=True)
-    ckpt = read_checkpoint(args.resume, device) if args.resume else None
+    ckpt_path = args.resume or args.init_from
+    ckpt = read_checkpoint(ckpt_path, device) if ckpt_path else None
     cfg = OmniConfig(**ckpt["env"]) if ckpt else OmniConfig()
     cfg = replace(cfg, robustness=args.robustness)
     if args.corrective_gait:
@@ -81,28 +89,34 @@ def run(args):
         if not cfg.champ_gait:
             raise ValueError("--champ-refine requires the CHAMP gait")
         cfg = replace(cfg, champ_refine=True)
+    if args.free_gait:
+        cfg = replace(cfg, free_gait=True, champ_gait=False, champ_ik=False, champ_refine=False)
     if args.vy_turn_only:
-        if not cfg.champ_gait:
-            raise ValueError("--vy-turn-only requires the CHAMP gait")
+        if not (cfg.champ_gait or cfg.free_gait):
+            raise ValueError("--vy-turn-only requires --champ-gait or --free-gait")
         cfg = replace(cfg, vy_turn_only=True)
     if args.speed_stage is not None:
-        if not cfg.champ_gait:
-            raise ValueError("--speed-stage requires the CHAMP gait")
+        if not (cfg.champ_gait or cfg.free_gait):
+            raise ValueError("--speed-stage requires --champ-gait or --free-gait")
         speed = SPEED_LADDER[args.speed_stage]
         # Keep wheel-speed headroom for the outer wheel during a moving turn.
         cfg = replace(cfg, max_speed=speed, max_reverse=.65,
                       wheel_speed_limit=max(15., (speed + 1.05) / .096))
     env = OmniEnv(args.num_envs, cfg,
                  seed=args.seed, nthread=args.nthread)
-    ac = make_policy().to(device)
-    ppo = PPO(ac, lr=args.lr, epochs=4, desired_kl=0, entropy_coef=.002)
+    init_std = args.init_std if args.init_std is not None else (.35 if cfg.free_gait else .23)
+    ac = make_policy(init_std=init_std).to(device)
+    ppo = PPO(ac, lr=args.lr, epochs=4, desired_kl=args.desired_kl, entropy_coef=args.entropy_coef)
     start = 0
     if ckpt:
         ac.load_state_dict(ckpt["model"])
-        ppo.opt.load_state_dict(ckpt["optimizer"])
-        start = ckpt["iteration"]
-        for group in ppo.opt.param_groups:
-            group["lr"] = args.lr
+        if not args.resume and args.init_std is not None:
+            ac.std.data.fill_(args.init_std)
+        if args.resume:
+            ppo.opt.load_state_dict(ckpt["optimizer"])
+            start = ckpt["iteration"]
+            for group in ppo.opt.param_groups:
+                group["lr"] = args.lr
     else:
         torch.nn.init.zeros_(ac.actor.network[-1].weight)
         torch.nn.init.zeros_(ac.actor.network[-1].bias)
@@ -110,6 +124,7 @@ def run(args):
     out = args.output.resolve()
     out.mkdir(parents=True, exist_ok=False)
     config = vars(args) | {"output": str(out), "resume": str(args.resume) if args.resume else None,
+                            "init_from": str(args.init_from) if args.init_from else None,
                             "env": asdict(env.cfg), "start_iteration": start, "joint_names": JOINT_NAMES}
     (out / "config.json").write_text(json.dumps(config, indent=2) + "\n")
     stopped = False
@@ -206,7 +221,7 @@ def run(args):
                     save_tick = next_save
                     path = out / f"model_{it}.pt"
                     tmp = path.with_suffix(".tmp")
-                    torch.save({"task": CHAMP_TASK if env.cfg.champ_gait else TASK,
+                    torch.save({"task": task_name(env.cfg),
                                 "iteration": it, "joint_names": JOINT_NAMES,
                                 "env": asdict(env.cfg), "model": ac.state_dict(),
                                 "optimizer": ppo.opt.state_dict(), "lr": ppo.lr, "stop_reason": reason}, tmp)
@@ -227,6 +242,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--output", required=True, type=Path)
     p.add_argument("--resume", type=Path)
+    p.add_argument("--init-from", type=Path)
     p.add_argument("--iterations", type=int, default=200)
     p.add_argument("--num-envs", type=int, default=96)
     p.add_argument("--steps", type=int, default=24)
@@ -240,6 +256,10 @@ def main():
     p.add_argument("--champ-ik", action="store_true", help="Use model-based wheel-center inverse kinematics")
     p.add_argument("--champ-refine", action="store_true", help="Keep short yaw taps low and smooth the wheel command")
     p.add_argument("--vy-turn-only", action="store_true", help="Train only lateral (vy) and in-place turn (wz) behaviors")
+    p.add_argument("--free-gait", action="store_true", help="Train free RL leg gait with light diagonal phase and posture rewards")
+    p.add_argument("--init-std", type=float, help="Optional initial policy std")
+    p.add_argument("--entropy-coef", type=float, default=.002, help="PPO entropy coefficient")
+    p.add_argument("--desired-kl", type=float, default=0.0, help="Adaptive KL target (0 disables)")
     p.add_argument("--speed-stage", type=int, choices=range(len(SPEED_LADDER)),
                    help="Index into the 0.65 to 3.5 m/s forward-speed curriculum")
     p.add_argument("--lr", type=float, default=3e-4)

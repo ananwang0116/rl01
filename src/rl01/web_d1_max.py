@@ -15,7 +15,7 @@ from rl01.d1_max_omni import OmniEnv, build_model
 from rl01.train_d1_max_omni import load_policy
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CHECKPOINT = Path("runs/d1_vy_turn_s3/model_340.pt")
+DEFAULT_CHECKPOINT = Path("runs/d1_free_vt_r7_s3/model_1050.pt")
 DIRECTIONS = {"front": (1., 0.), "back": (-1., 0.), "left": (0., 1.), "right": (0., -1.)}
 
 

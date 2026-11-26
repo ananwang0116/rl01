@@ -629,3 +629,57 @@
   - **转向对照 `01..05`**（[turn_compare.png](../runs/d1_vy_turn_s3/eval/turn_compare.png)）：慢速左转（`+0.22` 2s→停 2s）在 `01→02→03` 阶段 `any_swing=False`（脚不离地偏航至 `6.89°`），`04` 迈 `[0, 3]`（`FBL+RAR`）、`05` 补步 `[1, 2]`（`FAR+RBL`），停稳 `22.63°`、`tilt=0.12°`；慢速右转、快速左右转（`±0.50`）均严格镜像且 `any_fall=False`。
   - **8 方向全强度抗冲击 & WebLab 模型切换**：站立 / 横移 / 转向 × 8 方向 `push(scale=1.0)` 共 **24/24 全部通过（`0/24` 跌倒）**，最大冲击倾角 `8.01°`（左移 90° 侧向冲击）；进程内 `D1Preview` 列出 30 个检查点并在 `model_118.pt` 与 `model_340.pt` 间热切换通过，`8800` 端口保持关闭。
 - **验证层级与下一步**：当前为 MuJoCo 仿真与进程内 WebLab 接口验证（`8800` 端口已确认关闭）；下一步由用户自行启动 WebLab 实测当前横移与转向手感后，再恢复前后直行合并训练。
+
+## 2026-11-26 会话26：D1 Max 横移/转向步态根因定位与去约束对角踏步重训（MuJoCo）
+
+- **目标与环境**：本机 16 核 CPU + 46 GiB RAM + RTX 5070 12 GB，MuJoCo 4.0.0 + PyTorch 2.11.0；未接实机硬件，8800 端口保持关闭。用户反馈 `d1_vy_turn_s3/model_340.pt` 存在四类问题：转向时腿向外偏移且中心位置偏离、横移时小腿弯曲过大且向前漂、俯视严重不对称；同时新增 [Vy侧视.mp4](../jpeg/Vy侧视.mp4) 并要求先对照 `Go2`（[runs/go2_stairs_omni_v12/model_600.pt](../runs/go2_stairs_omni_v12/model_600.pt)）俯视/侧视连续帧再定位与重训，并指出“有可能约束太多，转向靠简单对角踏步即可，左转左前右后先动、左移右前左后先动”。
+- **对照基线与根因拆解（MuJoCo 仿真 + 视频核对）**：
+  - **Go2 `model_600.pt` 基线（3s 无推力确定性）**：`vy=0.23` 时 `mean_vx=+0.018`、`mean_vy=+0.198`，四腿收于髋下对称对角交替（Y 跨度 `[111.2, 101.6, 102.0, 89.3] mm`）；`wz=0.50` 时 `mean_wz=+0.530 rad/s`、`max_xy_disp=0.216 m`，俯视四腿紧贴车身。
+  - **D1 `model_340.pt` 问题与零 RL 动作（`zero_action=True`）对照**：
+    1. **横移大弯腿与前漂**：`vy=0.23`（6s）`mean_vy=+0.120 m/s`、`mean_vx=+0.032 m/s`（`end_x=+0.149 m`），`KNEE` 摆幅达 `0.670 rad`（`38.4°`），X 向足端摆动高达 `101.8 mm`；即使将 RL 动作全置零，`knee_dev` 仍达 `[-0.337, +0.340] rad`、`vx` 剧烈前后震荡 `±0.14 m/s`。根因：`d1_max_champ.py` 抬脚高达 `56 mm` + `v_sweep=3.4*vy`，且 `WheelLegIK.solve()` 用 `down = sqrt(y^2 + z^2 - side_y^2)` 将纯横向 `y` 偏移耦合进膝/髋屈伸（仅 `y=+60 mm` 就导致 `FBL` 伸腿 `+0.181 rad` 而 `FAR/RAR` 屈腿 `-0.110/+0.110 rad`），41 kg 机身下 `ABAD` 只走出 15–30% 而膝髋被强行屈伸推着轮子前后晃动。
+    2. **转向外撇、不对称与高角速锁死**：`wz=0.50`（6s）实际 `mean_wz` 仅 `0.041 rad/s`（6 秒只转 `22.3°`），`FAR/RBL` 横向跨度 `52.9 / 49.8 mm` 对 `FBL/RAR` `16.8 / 11.4 mm`；`wz=0.22` 同样 `FAR/RBL` `49.3 / 47.6 mm` 对 `7.3 / 7.6 mm`、中心偏移 `0.105 m`。根因：(a) `phase1_skew` 起步扭转使内收对角（`FBL+RAR`）缩短卸荷、外展对角（`FAR+RBL`）伸长扛全重并外撇 `±52 mm`；(b) `|wz| >= 0.35` 触发 `fast_inplace_turn` 将 `turn_goal` 设为 `+0.10*foot_velocity` 却无撑地回扫，导致两对腿全部锁死在扭偏位置与差速轮对抗。
+- **修改与迭代过程（保留所有失败/中间证据目录）**：
+  - 在 [d1_max_omni.py](../src/rl01/d1_max_omni.py) 与 [train_d1_max_omni.py](../src/rl01/train_d1_max_omni.py) 新增 `--free-gait` 与 `--init-from`、`--desired-kl`、`--init-std`、`--entropy-coef`：去掉 `DiagonalGait`（`phase1_skew` / `fast_inplace_turn`）与 3D 足端强追踪，改用“平面 `(z)` IK + 独立 `ABAD` 摆动”的对称对角低抬踏步（~`2.5–3.2 cm` 抬轮，完全解耦 `y` 与 `KNEE`）+ 启步对角对齐（`vy>0` 先动 `FAR+RBL`、`wz>0` 先动 `FBL+RAR`）+ 放开 `ABAD`（`±0.24 rad`）和轻度横滚/转向原地惩罚。
+  - **中间迭代留档**：
+    - `runs/d1_free_vt_s1`（第 150 轮停，无效证据）：无先验+窄高斯 `sigma=0.09` 卡在原地零速局部最优（`clr_p95=0`）。
+    - `runs/d1_free_vt_r2_s1`（400 轮，无效证据）：纯零先验仍未解锁主动抬轮（`vy=0`）。
+    - `runs/d1_free_vt_r3_s1`（300 轮）：引入平面解耦对角先验后姿态对称但 `ABAD/foot_dy` 惩罚过重，仅达半速（`vy=+0.045`、`wz=+0.248`）。
+    - `runs/d1_free_vt_r4_s1`（400 轮）：去掉 `ABAD/foot_dy` 惩罚后 `wz=+0.469 rad/s`（`max_disp=0.041 m`），但单侧 `FAR` 拖地且 `vy` 偏航 `+60°`。
+    - `runs/d1_free_vt_r5_s1`（400 轮）：加入启步对角对齐与强航向惩罚后 `vy` 直线达 `0.103 m/s`（`end_x=0.025 m`），`wz` 因差速/腿限幅偏慢且横漂。
+- **最终三阶段课程（`d1_free_vt_r6_s1` → `s2` → `s3`）**：
+  - `s1`（从 `r5_s1/model_400.pt` 热启动，[d1_free_vt_r6_s1.log](runs/d1_free_vt_r6_s1.log)，`robustness=0.35`，`350` 轮 / `102.1s`，`falls=0`、`tilt_deg=1.79°`）→ `s2`（[d1_free_vt_r6_s2.log](runs/d1_free_vt_r6_s2.log)，`robustness=0.70`，`600` 轮 / `72.7s`，`falls=0`、`tilt_deg=2.24°`）→ `s3`（[d1_free_vt_r6_s3.log](runs/d1_free_vt_r6_s3.log)，`robustness=1.00`，`900` 轮 / `87.9s`，`falls=0`、`vy_mae=0.039`、`yaw_mae=0.078`）。
+  - 更新 [web_d1_max.py](../src/rl01/web_d1_max.py) 默认检查点为 [runs/d1_free_vt_r6_s3/model_900.pt](../runs/d1_free_vt_r6_s3/model_900.pt)。
+- **最终独立验证（`runs/d1_free_vt_r6_s3/model_900.pt`，均在 MuJoCo 仿真，已查验 [curves.png](../runs/d1_free_vt_r6_s3/eval/curves.png) 及俯视/侧视/正视连续帧）**：
+  - **确定性 6s 无推力**：
+    - `vy=+0.23 / -0.23`：`mean_vy = +0.168 / -0.169 m/s`，`mean_vx = -0.017 / -0.008 m/s`，`end_yaw = +3.5° / -2.9°`，`knee_rng = 0.289 / 0.286 rad`（较旧 `0.670 rad` 降 57%），净空 `11.8–25.1 mm`（侧视小腿平顺，俯视对称）；
+    - `wz=+0.50 / -0.50`：`mean_wz = +0.510 / -0.499 rad/s`（旧版卡在 `0.041`），`end_yaw = +178.5° / -175.2°`，`max_disp = 0.125 / 0.154 m`，Y 向跨度 `[46.3, 55.5, 58.6, 46.3] / [53.5, 48.7, 46.5, 59.7] mm`（全四腿对称），`knee_rng = 0.236 / 0.242 rad`；
+    - `wz=+0.22`：`mean_wz = +0.225 rad/s`，`max_disp = 0.229 m`，`fdy = [39.8, 29.4, 37.2, 41.3] mm`，`knee_rng = 0.223 rad`。
+  - **采样动作（8 环境 × 6s × 5 工况）**：**40/40 全部存活（0 摔倒）**，`vy=±0.23` 实测 `+0.169 / -0.170 m/s`，`wz=±0.50` 实测 `+0.506 / -0.486 rad/s`。
+  - **8 方向全强度抗冲击（`robustness=1.0`，24 试验）**：站立 **8/8**（`max_tilt=6.9°`）、横移 **8/8**（`8.7°`）、转向 **8/8**（`5.4°`），总计 **24/24 全部通过**。
+  - **进程内 WebLab 检验**：`+2°` 点按实转 `+1.64°`（峰值净空 `16.6 mm`，0 摔倒），`vy=0.23` 1s 实速 `+0.175 m/s`，热切换检查点正常。
+- **验证层级、清理与下一步**：全部为 MuJoCo 仿真与进程内 WebLab 接口检查，未做 sim2sim 接触差异测试与真机测试；`tools/proc.sh list` 与 `ps` 已确认无本项目后台进程，8800 端口保持关闭。下一步可在 WebLab 实测新默认模型手感，确认后合并前后直行速度课程。
+
+## 2026-11-26 会话27：D1 Max 原地转向去差速、前后腿对称与快慢分档抬脚修正（MuJoCo）
+
+- **用户反馈与复现定位**：用户在 WebLab 实测与新增 [turn侧视.mp4](../jpeg/turn侧视.mp4) 对照后指出两项转向问题，并询问原版 `Go2` 是否存在轮速差速要求：
+  1. **长按转向左右腿一前一后不对称 & 右转偏移过猛**：复现 `runs/d1_free_vt_r6_s3/model_900.pt` 在长按满幅转向 `wz=±0.55`（6s）下的表现：`wz=+0.55` 位移 `0.123 m` 但 `|FBL-FAR|_x p95 = 50.5 mm`、`|RBL-RAR|_x p95 = 103.7 mm`；`wz=-0.55` 出现 **`max_disp = 0.438 m`** 剧烈螺旋漂移，`|FBL-FAR|_x p95 = 86.1 mm`、`|RBL-RAR|_x p95 = 138.9 mm`、`FBL` 净空跌至 `6.5 mm`。
+  2. **原版 `Go2` 无轮速差速**（已查证 [env.py](../src/rl01/env.py#L183-L209)）：`Go2` 为纯足式，`maneuver_foot_targets` 仅靠对角小跳步原地转向；反观 `d1_max_omni.py` 先前 `free_controls` 中硬塞了 `command[:, 2] * 0.42 * [-1, 1, -1, 1] / radius`（约真实半轮距 `0.215 m` 的两倍，`±2.41 rad/s`），轮子持续互拽诱发前/后腿 `X` 错位剪刀步并在支撑载荷不均时把机身拖偏。
+  3. **首步相位镜像 bug**：`s=0` 在 `observations()` 时尚未触发 `controls()` 启步相位对齐，`wz=+0.55` 与 `wz=-0.55` 首步 `obs[53:55]` 同为 `[0, 1]`（导致 `mirror_obs` 差值 `2.00`、`s=0` 动作差 `0.225`），静止时 `[0, 1]` 取反为 `[0, -1]` 亦与真实站立不匹配。
+  4. **慢转 vs 快转抬脚区分**（对照 [turn.mp4](../jpeg/turn.mp4) 与 [turn侧视.mp4](../jpeg/turn侧视.mp4)）：慢转应如 `turn.mp4` 慢慢偏转姿态（微离地 `1.4–2.0 cm` 消摩擦），快转再切至 `3.0–3.8 cm` 对角小跳步。
+- **代码修改（[d1_max_omni.py](../src/rl01/d1_max_omni.py) & [train_d1_max_omni.py](../src/rl01/train_d1_max_omni.py)）**：
+  - 删除冗余重复的 `free_controls` 定义；新增 `_sync_free_phase()` 在 `observations()` 与 `free_controls()` 同步启步相位并将静止 `[sin, cos]` 置 `[0, 0]`（实测 `stand` 与 `s=0` `wz=±0.55` 的 `mirror_obs` / `mirror_action` 误差均为 **`0.0`**）。
+  - 去掉原地转向轮速差速前馈（仅高 `vx` 弧线滚动才按真实半轮距 `0.215 m` 温和混入），原地转向轮速残差限幅收至 `0.9 rad/s`；保留 `vy` 横移控制与奖励。
+  - 原地转向改用速度分档抬脚参考（`|wz|` `0.05..0.52 rad/s` 对应目标净空 `1.4..3.8 cm`、前馈抬高 `1.5..4.2 cm`）、前后左右脚 `X` 对称惩罚（`pair_dx_asym`）、原地轮速抑制与锚点加紧惩罚（`-15.0 * turn_disp_sq + 1.0 * exp(-turn_disp_sq / 0.06^2)`），并在站立模态加入脚位对称与轮速抑制；修复 `train_d1_max_omni.py` `--init-from` 与 `--init-std` 共用时被旧检查点覆盖 `std` 的问题。
+- **三阶段课程训练（保留中间目录留档）**：
+  - `d1_free_vt_r7_s1`（从 `r6_s3/model_900.pt` + `--init-std 0.25` 热启动，[d1_free_vt_r7_s1.log](runs/d1_free_vt_r7_s1.log)，`robustness=0.50`，`400` 轮 / `81.8s`，`falls=0`、`tilt_deg=2.29°`）→ `d1_free_vt_r7_s2`（加入慢快分档抬脚，[d1_free_vt_r7_s2.log](runs/d1_free_vt_r7_s2.log)，`robustness=0.75`，`350` 轮 / `69.4s`，`falls=0`、`tilt_deg=2.13°`）→ `d1_free_vt_r7_s3`（`--resume r7_s2/model_350.pt`，[d1_free_vt_r7_s3.log](runs/d1_free_vt_r7_s3.log)，`robustness=1.00`，`350..1050` 轮 / `142.2s`，`falls=0`、`tilt_deg=1.58°`、`vy_mae=0.042`、`yaw_mae=0.082`）。
+  - 更新 [web_d1_max.py](../src/rl01/web_d1_max.py) 默认检查点为 [runs/d1_free_vt_r7_s3/model_1050.pt](../runs/d1_free_vt_r7_s3/model_1050.pt)。
+- **最终独立验证（`runs/d1_free_vt_r7_s3/model_1050.pt`，MuJoCo 仿真，已查验 [curves.png](../runs/d1_free_vt_r7_s3/eval/curves.png) 及全部俯视/侧视/正视连续帧）**：
+  - **确定性 6s 无推力**：
+    - 慢转 `wz=+0.18 / -0.18`：`mean_wz = +0.185 / -0.185 rad/s`，`clr_p95 = [13.8..20.0] / [14.4..19.1] mm`（微抬稳转），`|FL-FR|_x95 = 9.3 / 11.3 mm`，`|RL-RR|_x95 = 8.3 / 9.3 mm`，`disp = 0.078 / 0.112 m`；
+    - 中转 `wz=+0.28 / -0.28`：`mean_wz = +0.286 / -0.286 rad/s`，`clr_p95 = 18.2–26.3 mm`，`X` 对称差 `6.3–11.5 mm`；
+    - 快转 `wz=+0.55 / -0.55`：`mean_wz = +0.555 / -0.559 rad/s`，`disp = 0.083 / 0.040 m`（右转漂移由 `0.438 m` 降至 **`0.040 m`**），`|FL-FR|_x95 = 14.9 / 10.6 mm`、`|RL-RR|_x95 = 12.7 / 14.3 mm`（较旧 `50–139 mm` 降约 80–90%），`clr_p95 = 22.4–38.8 mm`（清晰对角小跳步），轮速均值仅 `[-0.40..+0.49] rad/s`；
+    - 横移 `vy=+0.23 / -0.23`（保留）：`mean_vy = +0.207 / -0.195 m/s`，`mean_vx = -0.007 / -0.008 m/s`，`end_yaw = -0.9° / +0.7°`；
+    - 站立 `stand`：6s `0` 跌倒、`disp = 0.071 m`（注：`stand` 在无外部干扰长悬停末尾仍有约 `|FL-FR|_x95=59.3 mm` 静态微偏置、`yaw=+3.6°`）。
+  - **采样动作（8 环境 × 6s × 5 工况）**：**40/40 全部存活（0 摔倒）**；**8 方向全强度抗冲击（`robustness=1.0`，24 试验）**：站立 **8/8**（`max_tilt=4.2°`）、横移 **8/8**（`5.8°`）、转向 **8/8**（`4.3°`），总计 **24/24 全部通过**。
+  - **进程内 WebLab 检验**：`+2°/-2°` 点按实转 `+4.49°/-0.91°`（峰值净空 `25.7/24.5 mm`，0 摔倒），`vy=0.23` 1s `vy=+0.189`，`wz=-0.55` 2s `wz=-0.501`、`disp=0.021 m`，热切换检查点正常。
+- **验证层级与下一步**：当前验证仍为 MuJoCo 仿真与进程内 WebLab 接口检查，未做真机测试；用户先前于 21:52 启动的 `web/server.py`（PID 17123/17126）保持未动，可在界面下拉选择 `runs/d1_free_vt_r7_s3/model_1050.pt` 或重启后直接实测体验。下一步确认满意后即可合并前后直行速度课程。
