@@ -1,0 +1,75 @@
+cuda_device=NVIDIA GeForce RTX 3050 Laptop GPU free_gib=2.85 allocator_limit_gib=1.5
+stage_started run=d1_free_vt_r9_s1 start=0 scale=1 wall_budget_s=320 nenv=256 device=cuda
+iteration=1 progress=0.4% wall_s=1.2 reward=9.904 vx=0.045 vy=0.039 yaw=0.113 lift_mm=14.0 falls=0 timeouts=0 fps=5075
+iteration=9 progress=2.6% wall_s=6.8 reward=5.757 vx=0.048 vy=0.044 yaw=0.097 lift_mm=9.9 falls=0 timeouts=0 fps=8484
+checkpoint_health progress=5% iteration=18 fall_rate=0.0000 tilt_deg=1.47 vy_mae=0.040 yaw_mae=0.114 healthy=True
+iteration=18 progress=5.1% wall_s=13.6 reward=9.792 vx=0.044 vy=0.040 yaw=0.114 lift_mm=13.6 falls=0 timeouts=0 fps=8391
+iteration=27 progress=7.7% wall_s=20.6 reward=6.153 vx=0.053 vy=0.049 yaw=0.103 lift_mm=10.9 falls=0 timeouts=0 fps=7738
+checkpoint_health progress=10% iteration=35 fall_rate=0.0000 tilt_deg=1.54 vy_mae=0.039 yaw_mae=0.115 healthy=True
+iteration=35 progress=10.0% wall_s=26.8 reward=9.548 vx=0.042 vy=0.039 yaw=0.115 lift_mm=14.5 falls=0 timeouts=0 fps=7662
+checkpoint=/home/an/rl01/runs/d1_free_vt_r9_s1/model_35.pt
+iteration=44 progress=12.6% wall_s=33.8 reward=6.227 vx=0.047 vy=0.045 yaw=0.101 lift_mm=9.6 falls=0 timeouts=0 fps=8302
+checkpoint_health progress=15% iteration=53 fall_rate=0.0000 tilt_deg=1.77 vy_mae=0.039 yaw_mae=0.112 healthy=True
+iteration=53 progress=15.1% wall_s=40.6 reward=8.426 vx=0.040 vy=0.039 yaw=0.112 lift_mm=12.9 falls=0 timeouts=0 fps=7847
+iteration=62 progress=17.7% wall_s=47.5 reward=6.522 vx=0.045 vy=0.041 yaw=0.106 lift_mm=10.5 falls=0 timeouts=0 fps=8020
+checkpoint_health progress=20% iteration=70 fall_rate=0.0000 tilt_deg=1.53 vy_mae=0.039 yaw_mae=0.111 healthy=True
+iteration=70 progress=20.0% wall_s=53.6 reward=8.661 vx=0.042 vy=0.039 yaw=0.111 lift_mm=13.8 falls=0 timeouts=0 fps=7897
+checkpoint=/home/an/rl01/runs/d1_free_vt_r9_s1/model_70.pt
+iteration=79 progress=22.6% wall_s=60.7 reward=7.072 vx=0.047 vy=0.043 yaw=0.110 lift_mm=12.0 falls=0 timeouts=0 fps=7908
+checkpoint_health progress=25% iteration=88 fall_rate=0.0000 tilt_deg=1.60 vy_mae=0.045 yaw_mae=0.113 healthy=True
+iteration=88 progress=25.1% wall_s=67.7 reward=6.986 vx=0.045 vy=0.045 yaw=0.113 lift_mm=10.6 falls=0 timeouts=0 fps=8075
+iteration=97 progress=27.7% wall_s=74.8 reward=6.248 vx=0.049 vy=0.042 yaw=0.105 lift_mm=9.7 falls=0 timeouts=0 fps=8250
+checkpoint_health progress=30% iteration=105 fall_rate=0.0000 tilt_deg=1.55 vy_mae=0.046 yaw_mae=0.113 healthy=True
+iteration=105 progress=30.0% wall_s=80.9 reward=6.764 vx=0.048 vy=0.046 yaw=0.113 lift_mm=10.8 falls=0 timeouts=0 fps=8175
+checkpoint=/home/an/rl01/runs/d1_free_vt_r9_s1/model_105.pt
+iteration=114 progress=32.6% wall_s=88.0 reward=6.102 vx=0.051 vy=0.043 yaw=0.102 lift_mm=10.5 falls=0 timeouts=0 fps=7850
+checkpoint_health progress=35% iteration=123 fall_rate=0.0000 tilt_deg=1.53 vy_mae=0.044 yaw_mae=0.098 healthy=True
+iteration=123 progress=35.1% wall_s=94.9 reward=4.789 vx=0.048 vy=0.044 yaw=0.098 lift_mm=8.1 falls=0 timeouts=0 fps=7787
+iteration=132 progress=37.7% wall_s=101.8 reward=6.255 vx=0.050 vy=0.045 yaw=0.103 lift_mm=10.6 falls=0 timeouts=0 fps=8006
+checkpoint_health progress=40% iteration=140 fall_rate=0.0000 tilt_deg=1.38 vy_mae=0.042 yaw_mae=0.096 healthy=True
+iteration=140 progress=40.0% wall_s=107.9 reward=4.900 vx=0.046 vy=0.042 yaw=0.096 lift_mm=8.1 falls=0 timeouts=0 fps=7946
+checkpoint=/home/an/rl01/runs/d1_free_vt_r9_s1/model_140.pt
+iteration=149 progress=42.6% wall_s=114.8 reward=6.033 vx=0.051 vy=0.044 yaw=0.102 lift_mm=9.9 falls=0 timeouts=0 fps=8120
+checkpoint_health progress=45% iteration=158 fall_rate=0.0000 tilt_deg=1.33 vy_mae=0.044 yaw_mae=0.098 healthy=True
+iteration=158 progress=45.1% wall_s=121.8 reward=5.537 vx=0.050 vy=0.044 yaw=0.098 lift_mm=8.9 falls=0 timeouts=0 fps=7915
+iteration=167 progress=47.7% wall_s=128.7 reward=7.595 vx=0.048 vy=0.046 yaw=0.105 lift_mm=13.6 falls=0 timeouts=256 fps=7668
+checkpoint_health progress=50% iteration=175 fall_rate=0.0000 tilt_deg=1.50 vy_mae=0.047 yaw_mae=0.099 healthy=True
+iteration=175 progress=50.0% wall_s=134.9 reward=5.956 vx=0.050 vy=0.047 yaw=0.099 lift_mm=9.9 falls=0 timeouts=0 fps=7740
+checkpoint=/home/an/rl01/runs/d1_free_vt_r9_s1/model_175.pt
+iteration=184 progress=52.6% wall_s=141.8 reward=8.827 vx=0.048 vy=0.045 yaw=0.115 lift_mm=14.4 falls=0 timeouts=256 fps=7847
+checkpoint_health progress=55% iteration=193 fall_rate=0.0000 tilt_deg=1.39 vy_mae=0.048 yaw_mae=0.103 healthy=True
+iteration=193 progress=55.1% wall_s=148.8 reward=6.859 vx=0.052 vy=0.048 yaw=0.103 lift_mm=11.3 falls=0 timeouts=0 fps=8067
+iteration=202 progress=57.7% wall_s=155.9 reward=9.735 vx=0.043 vy=0.041 yaw=0.109 lift_mm=13.9 falls=0 timeouts=0 fps=8249
+checkpoint_health progress=60% iteration=210 fall_rate=0.0000 tilt_deg=1.43 vy_mae=0.046 yaw_mae=0.104 healthy=True
+iteration=210 progress=60.0% wall_s=162.4 reward=6.615 vx=0.056 vy=0.046 yaw=0.104 lift_mm=10.7 falls=0 timeouts=0 fps=6398
+checkpoint=/home/an/rl01/runs/d1_free_vt_r9_s1/model_210.pt
+iteration=219 progress=62.6% wall_s=169.8 reward=9.442 vx=0.042 vy=0.041 yaw=0.110 lift_mm=11.8 falls=0 timeouts=0 fps=8077
+checkpoint_health progress=65% iteration=228 fall_rate=0.0000 tilt_deg=1.52 vy_mae=0.043 yaw_mae=0.106 healthy=True
+iteration=228 progress=65.1% wall_s=177.9 reward=7.261 vx=0.048 vy=0.043 yaw=0.106 lift_mm=11.1 falls=0 timeouts=0 fps=7499
+iteration=237 progress=67.7% wall_s=185.4 reward=9.576 vx=0.040 vy=0.040 yaw=0.109 lift_mm=13.0 falls=0 timeouts=0 fps=7376
+checkpoint_health progress=70% iteration=245 fall_rate=0.0000 tilt_deg=1.60 vy_mae=0.042 yaw_mae=0.103 healthy=True
+iteration=245 progress=70.0% wall_s=192.2 reward=7.763 vx=0.045 vy=0.042 yaw=0.103 lift_mm=12.0 falls=0 timeouts=0 fps=7631
+checkpoint=/home/an/rl01/runs/d1_free_vt_r9_s1/model_245.pt
+iteration=254 progress=72.6% wall_s=199.6 reward=9.002 vx=0.042 vy=0.044 yaw=0.109 lift_mm=14.2 falls=0 timeouts=0 fps=7684
+checkpoint_health progress=75% iteration=263 fall_rate=0.0000 tilt_deg=1.82 vy_mae=0.043 yaw_mae=0.102 healthy=True
+iteration=263 progress=75.1% wall_s=207.2 reward=8.405 vx=0.044 vy=0.043 yaw=0.102 lift_mm=12.1 falls=0 timeouts=0 fps=7267
+iteration=272 progress=77.7% wall_s=214.8 reward=8.404 vx=0.049 vy=0.046 yaw=0.094 lift_mm=11.8 falls=0 timeouts=0 fps=6937
+checkpoint_health progress=80% iteration=280 fall_rate=0.0000 tilt_deg=1.90 vy_mae=0.043 yaw_mae=0.101 healthy=True
+iteration=280 progress=80.0% wall_s=221.6 reward=8.721 vx=0.046 vy=0.043 yaw=0.101 lift_mm=13.2 falls=0 timeouts=0 fps=7178
+checkpoint=/home/an/rl01/runs/d1_free_vt_r9_s1/model_280.pt
+iteration=289 progress=82.6% wall_s=229.2 reward=8.291 vx=0.045 vy=0.044 yaw=0.087 lift_mm=9.2 falls=0 timeouts=0 fps=7133
+checkpoint_health progress=85% iteration=298 fall_rate=0.0000 tilt_deg=1.94 vy_mae=0.045 yaw_mae=0.096 healthy=True
+iteration=298 progress=85.1% wall_s=237.1 reward=8.486 vx=0.045 vy=0.045 yaw=0.096 lift_mm=12.6 falls=0 timeouts=0 fps=6876
+iteration=307 progress=87.7% wall_s=244.2 reward=8.501 vx=0.041 vy=0.040 yaw=0.083 lift_mm=9.2 falls=0 timeouts=0 fps=7876
+checkpoint_health progress=90% iteration=315 fall_rate=0.0000 tilt_deg=1.99 vy_mae=0.043 yaw_mae=0.096 healthy=True
+iteration=315 progress=90.0% wall_s=250.3 reward=8.796 vx=0.043 vy=0.043 yaw=0.096 lift_mm=12.2 falls=0 timeouts=0 fps=8078
+checkpoint=/home/an/rl01/runs/d1_free_vt_r9_s1/model_315.pt
+iteration=324 progress=92.6% wall_s=256.9 reward=8.619 vx=0.042 vy=0.041 yaw=0.084 lift_mm=9.6 falls=0 timeouts=0 fps=7991
+checkpoint_health progress=95% iteration=333 fall_rate=0.0000 tilt_deg=2.01 vy_mae=0.043 yaw_mae=0.096 healthy=True
+iteration=333 progress=95.1% wall_s=263.8 reward=8.915 vx=0.044 vy=0.043 yaw=0.096 lift_mm=12.4 falls=0 timeouts=0 fps=8128
+iteration=342 progress=97.7% wall_s=271.0 reward=8.967 vx=0.043 vy=0.041 yaw=0.093 lift_mm=12.3 falls=0 timeouts=0 fps=6874
+checkpoint_health progress=100% iteration=350 fall_rate=0.0000 tilt_deg=2.04 vy_mae=0.041 yaw_mae=0.095 healthy=True
+iteration=350 progress=100.0% wall_s=277.2 reward=8.780 vx=0.045 vy=0.041 yaw=0.095 lift_mm=12.1 falls=0 timeouts=256 fps=7776
+checkpoint=/home/an/rl01/runs/d1_free_vt_r9_s1/model_350.pt
+cuda_peak_allocated_mib=40.2 cuda_peak_reserved_mib=56.0
+stage_complete iteration=350 wall_s=277.2 reason=iterations

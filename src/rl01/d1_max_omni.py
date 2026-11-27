@@ -193,7 +193,7 @@ class OmniEnv:
             duration[kind == 0] = self.rng.uniform(1.0, 2.0, (kind == 0).sum())
             duration[slow_turn] = self.rng.uniform(.6, 2.0, slow_turn.sum())
             commands[stopping] = 0
-            self.pending_stop[ids] = slow_turn & ~stopping
+            self.pending_stop[ids] = (slow_turn | ((lat | fast_turn) & (self.rng.random(n) < .55))) & ~stopping
             self.command[ids] = commands
             self.command_left[ids] = np.maximum(1, np.rint(duration / self.dt)).astype(int)
             return
@@ -447,7 +447,8 @@ class OmniEnv:
         return np.stack((np.zeros_like(dy), dy, dz), axis=-1)
 
     def step(self, action, *, control_targets=None, external_wrench=None):
-        action = np.clip(action, -1, 1)
+        raw_action = np.asarray(action, dtype=np.float32)
+        action = np.clip(raw_action, -1, 1)
         if control_targets is None:
             offsets = self.controls(action)
         else:
@@ -513,7 +514,10 @@ class OmniEnv:
             base_pos = self.state[:, self.root:self.root + 3]
             foot_body = np.einsum("nji,nkj->nki", rotation, wheel_frames[:, :, :3] - base_pos[:, None, :])
             foot_dx = foot_body[:, :, 0] - self.home_foot_body[None, :, 0]
+            foot_dy = foot_body[:, :, 1] - self.home_foot_body[None, :, 1]
             pair_dx_asym = np.square((foot_dx[:, 0] - foot_dx[:, 1]) / .03) + np.square((foot_dx[:, 2] - foot_dx[:, 3]) / .03)
+            pair_dy_asym = np.square((foot_dy[:, 0] + foot_dy[:, 1]) / .025) + np.square((foot_dy[:, 2] + foot_dy[:, 3]) / .025)
+            abad_sym = np.square((q_dev[:, 0, 0] + q_dev[:, 1, 0]) / .030) + np.square((q_dev[:, 2, 0] + q_dev[:, 3, 0]) / .030)
             turn_disp_sq = np.sum(np.square(base_pos[:, :2] - self.turn_anchor_xy), axis=1) * in_place_turn
             lat_prog = np.clip(np.sign(self.command[:, 1]) * v[:, 1] / max(self.cfg.max_lateral, 1e-4), -.5, 1.0) * (np.abs(self.command[:, 1]) > .03)
             yaw_prog = np.clip(np.sign(self.command[:, 2]) * ang[:, 2] / .45, -.5, 1.0) * (np.abs(self.command[:, 2]) > .03)
@@ -540,15 +544,20 @@ class OmniEnv:
                     - .40 * np.square(over_lift / .020).mean(axis=1)
                 ),
                 "posture": (
-                    -1.20 * tilt**2 - 10.0 * (height - .553)**2
+                    -(1.20 + 3.50 * stand_mode) * tilt**2 - 10.0 * (height - .553)**2
                     - 15.0 * turn_disp_sq + 1.00 * np.exp(-turn_disp_sq / (.06**2)) * in_place_turn
                     - .50 * np.square(q_dev[:, :, 2]).mean(axis=1)
                     - np.where(in_place_turn | stand_mode, 1.50, .50) * np.square(foot_dx / .045).mean(axis=1)
                     - (1.20 * (in_place_turn | stand_mode) + .25 * vy_mode) * pair_dx_asym
+                    - (2.00 * pair_dy_asym + 1.50 * abad_sym + .80 * np.square(q_dev[:, :, 0] / .060).mean(axis=1)) * stand_mode
                     - .60 * np.square(wheel_dq / 2.0).mean(axis=1) * (in_place_turn | stand_mode)
                     - 1.20 * np.abs(q_dev).mean(axis=(1, 2)) * stand_mode
                 ),
-                "smooth": -.06 * np.square(action - self.action).mean(axis=1) - .015 * np.square(action).mean(axis=1),
+                "smooth": (
+                    -.06 * np.square(action - self.action).mean(axis=1)
+                    - .015 * np.square(action).mean(axis=1)
+                    - .15 * np.square(np.maximum(0., np.abs(raw_action) - 1.)).mean(axis=1)
+                ),
             }
         else:
             if self.diagonal is None:

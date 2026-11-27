@@ -683,3 +683,17 @@
   - **采样动作（8 环境 × 6s × 5 工况）**：**40/40 全部存活（0 摔倒）**；**8 方向全强度抗冲击（`robustness=1.0`，24 试验）**：站立 **8/8**（`max_tilt=4.2°`）、横移 **8/8**（`5.8°`）、转向 **8/8**（`4.3°`），总计 **24/24 全部通过**。
   - **进程内 WebLab 检验**：`+2°/-2°` 点按实转 `+4.49°/-0.91°`（峰值净空 `25.7/24.5 mm`，0 摔倒），`vy=0.23` 1s `vy=+0.189`，`wz=-0.55` 2s `wz=-0.501`、`disp=0.021 m`，热切换检查点正常。
 - **验证层级与下一步**：当前验证仍为 MuJoCo 仿真与进程内 WebLab 接口检查，未做真机测试；用户先前于 21:52 启动的 `web/server.py`（PID 17123/17126）保持未动，可在界面下拉选择 `runs/d1_free_vt_r7_s3/model_1050.pt` 或重启后直接实测体验。下一步确认满意后即可合并前后直行速度课程。
+
+## 2026-11-27 会话28：D1 Max 命令停止后单腿外撇/歪斜对称性极简修正与微调（MuJoCo）
+
+- **用户反馈与复现根因**：用户实测 `runs/d1_free_vt_r7_s3/model_1050.pt` 指出，转向（左/右）与横移（左移右前腿、右移左前腿）停止命令后常留单侧前腿外撇歪斜。MuJoCo 复现定位到三项原因：
+  1. `stand_mode`（`cmd=(0,0,0)`）存在双稳态斜对角外展吸引子（`FAR+RBL` 外展 `abad ≈ [0, -0.111, +0.108, 0]`、`tilt ≈ 3°` 或 `FBL+RAR` 外展 `[+0.110, 0, 0, -0.112]`），且 `act_abad` 饱和在 `±1.1..1.7`（`clip(±1,1)` 后梯度几乎消失）；
+  2. `sample_commands` 仅对 `slow_turn` 设 `pending_stop`，`lateral` 与 `fast_turn` 极少直接切到 `0` 练习停步；
+  3. 原 `stand_mode` 缺乏左右 `ABAD` / `foot_dy` 对称惩罚，左移正 roll 固定落入 `FAR+RBL` 稳态，右移负 roll 固定落入 `FBL+RAR` 稳态。
+- **方案取舍（保留中间尝试留档）**：
+  - `runs/d1_free_vt_r8_s1`（347 轮）：曾加入停步 `settling` 补步与强回 `home` 关节/高度惩罚，停姿虽对称但用户反馈“多一个动作且站得更高”，按要求弃用该方案（保留本地目录留档，不入默认）。
+  - **最终极简修正（[d1_max_omni.py](../src/rl01/d1_max_omni.py)）**：去掉 `settling` 与髋/膝回零惩罚，保留原版步态与自然高度；仅在 `sample_commands` 为 `lateral`/`fast_turn` 增加 55% `pending_stop`，在 `stand_mode` 加入 `pair_dy_asym`、`abad_sym`、轻度 `q_dev[:, :, 0]` 与 `tilt` 惩罚，并在 `smooth` 加入 `raw_action` 越界软惩罚（`-0.15 * max(0, |raw_action| - 1)^2`）。
+- **微调训练与默认检查点更新**：
+  - `runs/d1_free_vt_r9_s1`（从 `runs/d1_free_vt_r7_s3/model_1050.pt` + `--init-std 0.25` 热启动，[d1_free_vt_r9_s1.log](../runs/d1_free_vt_r9_s1.log)，`robustness=1.0`，`350` 轮 / `277.2s`，RTX 3050 GPU）：全程 `falls=0`，第 350 轮 `reward=8.780`、`tilt_deg=2.04°`、`vy_mae=0.041`、`yaw_mae=0.095`。
+  - 更新 [web_d1_max.py](../src/rl01/web_d1_max.py#L18) 默认检查点为 [runs/d1_free_vt_r9_s1/model_350.pt](../runs/d1_free_vt_r9_s1/model_350.pt)。
+- **验证层级与限制**：按用户要求训练完成后未执行独立评估脚本与画图，仅由用户直接在 WebLab 实测检验；本地 `proc.sh list` 与 `ps` 已确认无训练后台进程残留。
